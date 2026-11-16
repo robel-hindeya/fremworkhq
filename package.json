@@ -1,0 +1,36 @@
+{
+  "name": "fremwork",
+  "private": true,
+  "packageManager": "pnpm@10.12.1",
+  "engines": {
+    "node": "22.x"
+  },
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "pnpm --parallel --filter @fremwork/web --filter @fremwork/api dev",
+    "dev:web": "pnpm --filter @fremwork/web dev",
+    "dev:api": "pnpm --filter @fremwork/api dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "db:start": "supabase start",
+    "db:reset": "supabase db reset",
+    "db:types": "supabase gen types typescript --local > apps/api/src/supabase/database.types.ts",
+    "test": "node tests/auth.test.cjs && node tests/admin-email.test.cjs && node tests/api-fixes.test.cjs && pnpm test:db",
+    "test:db": "node --test tests/db/rls.test.mjs",
+    "db:setup-sql": "node scripts/build-setup-sql.mjs"
+  },
+  "pnpm": {
+    "overrides": {
+      "postcss@<8.5.23": "^8.5.23",
+      "multer@<2.5.0": "^2.5.0"
+    }
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.3.16",
+    "next": "^15.5.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  }
+}
