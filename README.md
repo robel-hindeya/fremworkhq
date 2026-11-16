@@ -17,11 +17,16 @@ All twelve artboards are covered. The phone artboards are the same pages at 390p
 | --- | --- | --- |
 | `/` | Homepage | Demo chat with the six assistants (canned replies, see `components/screens/home-content.ts`) |
 | `/login` | Log in | Supabase password sign-in, SSO buttons, forgot password |
-| `/waitlist` | Join the waitlist | Saves to `waitlist_entries` through the API. Respects the "Accept sign-ups" and "Ask for company" settings |
+| `/signup` | *(not in the design)* | Supabase sign-up with email confirmation, or Google. Uses the Log in card styles |
+| `/home` | *(not in the design)* | Signed-in dashboard. The middleware sends signed-out visitors to `/login` |
+| `/waitlist` | Join the waitlist | Redirects to `/signup`, so links already shared keep working. The waitlist API (`POST /waitlist`) is still live |
 | `/events` | Events | Published events from the API, registration form, cancel, add-to-calendar (.ics) |
 | `/admin` | Admin | Overview stats, waitlist (invite, bulk invite, CSV), events (create, publish), registrations (check-in, CSV), settings, team invites |
 | any unknown URL | 404 | Fram looks around |
 | `/set-password` | *(not in the design)* | Where invite and reset links land. Uses the Log in card styles |
+| `/auth/callback`, `/auth/confirm` | *(route handlers)* | Finish Google (PKCE) sign-in and email links, then go to `/open-app` |
+| `/open-app` | *(redirect)* | Where every sign-in lands: `/home` when signed in, otherwise `/login` |
+| `/admin/login` | *(not in the design)* | Admin sign-in. Only owners and admins get through; the middleware checks the role on `/admin` too |
 
 ## How it fits together
 

@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
@@ -21,9 +21,17 @@ export class SupabaseService {
     this.db = createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
   }
 
-  /** Unwraps a Supabase response or throws a 500 with the database message. */
-  static check<T>(res: { data: T; error: { message: string } | null }): T {
-    if (res.error) throw new InternalServerErrorException(res.error.message);
+  private static readonly log = new Logger('Database');
+
+  /**
+   * Unwraps a Supabase response. On error the database message is logged, never sent to the caller:
+   * it can name tables, columns and constraints.
+   */
+  static check<T>(res: { data: T; error: { message: string; code?: string } | null }): T {
+    if (res.error) {
+      SupabaseService.log.error(`${res.error.code ?? 'error'}: ${res.error.message}`);
+      throw new InternalServerErrorException('Something went wrong on our side. Try again in a minute.');
+    }
     return res.data;
   }
 }

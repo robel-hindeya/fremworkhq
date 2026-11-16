@@ -14,7 +14,6 @@ export const metadata: Metadata = {
     'Fremwork is an AI financial assistant for business owners, finance teams, and modern creators. Ask complex financial questions, automate close, and join hands-on vibe coding training.',
   applicationName: 'Fremwork',
   authors: [{ name: 'Fremwork Team', url: siteUrl }],
-  generator: 'Next.js',
   keywords: [
     'Fremwork',
     'AI finance',
@@ -26,7 +25,6 @@ export const metadata: Metadata = {
     'financial analysis',
     'cash flow runway',
   ],
-  referrer: 'origin-when-cross-origin',
   creator: 'Fremwork',
   publisher: 'Fremwork',
   formatDetection: {

@@ -71,60 +71,16 @@ export function AdminEmailComposer({
     setSelected(cleanInitials);
     setMode(cleanInitials.length > 1 ? 'selected' : 'individual');
 
-    // Build immediate contacts from initialEmails and local storage
-    const fallbackList: Contact[] = [];
-    cleanInitials.forEach((em) => {
-      fallbackList.push({ email: em, name: em.split('@')[0], sources: ['Registration attendee'] });
-    });
-
-    try {
-      if (typeof window !== 'undefined') {
-        const rawRegs = localStorage.getItem('fw_admin_registrations');
-        if (rawRegs) {
-          const list = JSON.parse(rawRegs);
-          list.forEach((item: any) => {
-            if (item.email && !fallbackList.some((c) => c.email.toLowerCase() === item.email.toLowerCase())) {
-              fallbackList.push({
-                email: item.email.toLowerCase(),
-                name: item.name || item.email,
-                sources: ['Event registration'],
-              });
-            }
-          });
-        }
-      }
-    } catch {}
-
-    // Add standard demo contacts if list is sparse
-    const demoContacts: Contact[] = [
-      { email: 'geets@gmail.com', name: 'robel', sources: ['Event registration'] },
-      { email: 'maya@northlane.co', name: 'Maya Torres', sources: ['Event registration'] },
-      { email: 'grace@ledgerly.app', name: 'Grace Lin', sources: ['Event registration'] },
-      { email: 'lena@koda.studio', name: 'Lena Fischer', sources: ['Event registration'] },
-      { email: 'kofi@sunbird.co', name: 'Kofi Mensah', sources: ['Event registration'] },
-    ];
-    demoContacts.forEach((dc) => {
-      if (!fallbackList.some((c) => c.email.toLowerCase() === dc.email.toLowerCase())) {
-        fallbackList.push(dc);
-      }
-    });
+    // Until the real list loads, show the people the admin picked so the selection is visible.
+    const picked: Contact[] = cleanInitials.map((em) => ({ email: em, name: em.split('@')[0], sources: ['Selected'] }));
+    setContacts(picked);
 
     api<Contact[]>('/admin/emails/recipients', { auth: true, fallback: false })
       .then((list) => {
-        if (!cancelled) {
-          const merged = [...list];
-          fallbackList.forEach((fc) => {
-            if (!merged.some((m) => m.email.toLowerCase() === fc.email.toLowerCase())) {
-              merged.push(fc);
-            }
-          });
-          setContacts(merged);
-        }
+        if (!cancelled) setContacts(list);
       })
-      .catch(() => {
-        if (!cancelled) {
-          setContacts(fallbackList);
-        }
+      .catch((err) => {
+        if (!cancelled) setError((err as Error).message || 'The contact list is unavailable. No email has been sent.');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -226,35 +182,15 @@ export function AdminEmailComposer({
       setResult(res);
       uncertain.current = false;
     } catch (err) {
-      // In development / demo environment without live SMTP/Resend API configured:
-      // Record to local storage and deliver a seamless success message
-      try {
-        if (typeof window !== 'undefined') {
-          const sentLog = JSON.parse(localStorage.getItem('fw_sent_emails') || '[]');
-          sentLog.unshift({
-            id: snapshot.requestId,
-            to: snapshot.emails,
-            subject: snapshot.subject,
-            format: snapshot.format,
-            body: snapshot.body,
-            sentAt: new Date().toISOString(),
-          });
-          localStorage.setItem('fw_sent_emails', JSON.stringify(sentLog.slice(0, 50)));
-        }
-      } catch {}
-
-      if (err instanceof ApiError && err.status >= 400 && err.status < 500 && err.status !== 401 && err.status !== 403) {
-        setError((err as Error).message);
+      if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+        // Rejected before sending (validation, auth): nothing went out, so the admin can fix it and send again.
+        // A conflict means this request is already recorded: keep "Check status" instead.
+        setError(err.message);
+        if (err.status !== 409) setSubmitted(false);
       } else {
-        setResult({
-          requestId: snapshot.requestId,
-          status: 'completed',
-          total: snapshot.emails.length,
-          accepted: snapshot.emails.length,
-          uncertain: false,
-          message: `${snapshot.emails.length} ${snapshot.emails.length === 1 ? 'email' : 'emails'} accepted and sent successfully!`,
-        });
-        uncertain.current = false;
+        // Network or server error: some messages may have been accepted. Never report success we cannot confirm.
+        uncertain.current = true;
+        setError('We could not confirm the send. Check status before you try again.');
       }
     } finally {
       setBusy(false);

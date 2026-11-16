@@ -12,6 +12,7 @@ export class HealthController {
       return { ok: false, problem: 'FREMWORK_SUPABASE_SECRET_KEY is not set on the API' };
     }
     const { error } = await this.supabase.db.from('app_settings').select('id').eq('id', 1).single();
-    return error ? { ok: false, problem: `Database: ${error.message}` } : { ok: true };
+    // Public endpoint: say what is wrong without echoing the database's own message.
+    return error ? { ok: false, problem: 'The database did not answer. Check the API logs.' } : { ok: true };
   }
 }

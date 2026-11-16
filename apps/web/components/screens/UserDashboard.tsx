@@ -4,10 +4,14 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { FramSvg, type FramFace } from '@/components/fram/FramSvg';
 import { useFram } from '@/components/fram/useFram';
-import { api } from '@/lib/api';
+import { api, ApiError, type PublicEvent, type Registration } from '@/lib/api';
+import { formatWhen } from '@/lib/format';
+import { downloadIcs } from '@/lib/ics';
+import { loadRegs, saveRegs } from '@/lib/registrations';
 
 interface UserDashboardProps {
   userName: string;
+  userEmail?: string;
   onLogout: () => void;
   defaultTab?: 'home' | 'events';
 }
@@ -19,8 +23,16 @@ interface EventItem {
   description: string;
   length: string;
   whenLabel: string;
+  startsAt?: string | null;
   location: string;
 }
+
+/** Placeholders shown until the published events load. They cannot be registered for. */
+const isLiveEvent = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+const toItem = (e: PublicEvent): EventItem => ({
+  id: e.id, type: e.type, title: e.title, description: e.description, length: e.length,
+  whenLabel: formatWhen(e.startsAt, e.whenLabel), startsAt: e.startsAt, location: e.location,
+});
 
 const DEFAULT_EVENTS: EventItem[] = [
   {
@@ -243,206 +255,109 @@ const RECENT_PROJECTS: ProjectCard[] = [
   },
 ];
 
-export function UserDashboard({ userName, onLogout, defaultTab = 'home' }: UserDashboardProps) {
+export function UserDashboard({ userName, userEmail = '', onLogout, defaultTab = 'home' }: UserDashboardProps) {
   const fram = useFram('smile');
   const [activeTab, setActiveTab] = useState<'home' | 'events'>(defaultTab);
   const [filter, setFilter] = useState<string>('All');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [registeredIds, setRegisteredIds] = useState<string[]>([]);
+  const [events, setEvents] = useState<EventItem[]>(DEFAULT_EVENTS);
+  const [regs, setRegs] = useState<Record<string, Registration>>({});
   const [modalEvent, setModalEvent] = useState<EventItem | null>(null);
   const [formName, setFormName] = useState<string>(userName || '');
-  const [formEmail, setFormEmail] = useState<string>('');
+  const [formEmail, setFormEmail] = useState<string>(userEmail);
   const [formPhone, setFormPhone] = useState<string>('');
   const [formCompany, setFormCompany] = useState<string>('');
   const [formRole, setFormRole] = useState<string>('Business owner');
   const [formSize, setFormSize] = useState<string>('11–50');
   const [formHeard, setFormHeard] = useState<string>('LinkedIn');
   const [formErr, setFormErr] = useState<string>('');
+  const [busy, setBusy] = useState(false);
   const [regSuccessNotice, setRegSuccessNotice] = useState<string>('');
+  const registeredIds = Object.keys(regs);
+  const featured = events[0];
 
   useEffect(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        const saved = localStorage.getItem('fw_user_registered_events');
-        if (saved) {
-          setRegisteredIds(JSON.parse(saved));
-        }
-        const userStr = localStorage.getItem('fw_user');
-        if (userStr) {
-          const u = JSON.parse(userStr);
-          if (u.name) setFormName(u.name);
-          if (u.email && u.email.includes('@')) setFormEmail(u.email);
-          if (u.phone) setFormPhone(u.phone);
-          if (u.company) setFormCompany(u.company);
-        }
-      }
-    } catch {}
+    setRegs(loadRegs());
+    api<PublicEvent[]>('/events')
+      .then((list) => { if (Array.isArray(list) && list.length) setEvents(list.map(toItem)); })
+      .catch(() => { /* keep the placeholders */ });
   }, []);
 
+  useEffect(() => {
+    if (!regSuccessNotice) return;
+    const t = window.setTimeout(() => setRegSuccessNotice(''), 3500);
+    return () => clearTimeout(t);
+  }, [regSuccessNotice]);
+
   const handleOpenRegister = (ev: EventItem) => {
-    setModalEvent(ev);
     setFormErr('');
-    try {
-      if (typeof window !== 'undefined') {
-        const rawAdmin = localStorage.getItem('fw_admin_registrations');
-        if (rawAdmin) {
-          const list = JSON.parse(rawAdmin);
-          const existing = list.find((r: any) => r.eventId === ev.id);
-          if (existing) {
-            if (existing.name) setFormName(existing.name);
-            if (existing.email) setFormEmail(existing.email);
-            if (existing.phone && existing.phone !== '—') setFormPhone(existing.phone);
-            if (existing.company && existing.company !== '—') setFormCompany(existing.company);
-            if (existing.role && existing.role !== '—') setFormRole(existing.role);
-            if (existing.companySize && existing.companySize !== '—') setFormSize(existing.companySize);
-            if (existing.heardFrom && existing.heardFrom !== '—') setFormHeard(existing.heardFrom);
-          }
-        }
-      }
-    } catch {}
+    if (!isLiveEvent(ev.id)) {
+      setRegSuccessNotice('Registration for this event opens soon.');
+      return;
+    }
+    // Prefill from an earlier registration in this browser.
+    const prior = Object.values(regs).find((r) => r.answers?.email)?.answers;
+    if (prior) {
+      if (prior.phone) setFormPhone(prior.phone);
+      if (prior.company) setFormCompany(prior.company);
+      if (prior.role) setFormRole(prior.role);
+      if (prior.size) setFormSize(prior.size);
+      if (prior.heard) setFormHeard(prior.heard);
+    }
+    setModalEvent(ev);
   };
 
   const handleCompleteRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formName.trim()) {
-      setFormErr('Please enter your full name.');
-      return;
-    }
-    if (!formEmail.trim() || !formEmail.includes('@')) {
-      setFormErr('Please enter a valid email address.');
-      return;
-    }
-    if (!formPhone.trim()) {
-      setFormErr('Please enter your phone number.');
-      return;
-    }
-    if (!modalEvent) return;
+    if (busy || !modalEvent) return;
+    if (!formName.trim()) return setFormErr('Please enter your full name.');
+    if (!/^[^s@]+@[^s@]+.[^s@]+$/.test(formEmail.trim())) return setFormErr('Please enter a valid email address.');
+    if (!formPhone.trim()) return setFormErr('Please enter your phone number.');
 
     const ev = modalEvent;
-    const newReg = {
-      id: Date.now(),
-      eventId: ev.id,
-      name: formName.trim(),
-      email: formEmail.trim(),
-      phone: formPhone.trim(),
-      company: formCompany.trim() || '—',
-      role: formRole || 'Business owner',
-      companySize: formSize || '11–50',
-      heardFrom: formHeard || 'LinkedIn',
-      checkedIn: false,
-      createdAt: new Date().toISOString(),
+    const answers = {
+      name: formName.trim(), email: formEmail.trim(), phone: formPhone.trim(), company: formCompany.trim(),
+      role: formRole, size: formSize, heard: formHeard,
     };
-
-    // 1. Save to fw_admin_registrations so it is immediately visible in Admin (/admin)
+    setBusy(true);
+    setFormErr('');
     try {
-      const rawAdmin = localStorage.getItem('fw_admin_registrations');
-      const existing: any[] = rawAdmin ? JSON.parse(rawAdmin) : [];
-      const filtered = existing.filter((r) => !(r.eventId === ev.id && r.email.toLowerCase() === newReg.email.toLowerCase()));
-      localStorage.setItem('fw_admin_registrations', JSON.stringify([newReg, ...filtered]));
-    } catch {}
-
-    // 2. Save to fw_user_registered_events (cards maintain their position without moving!)
-    setRegisteredIds((prev) => {
-      const next = prev.includes(ev.id) ? prev : [ev.id, ...prev];
-      try {
-        localStorage.setItem('fw_user_registered_events', JSON.stringify(next));
-      } catch {}
-      return next;
-    });
-
-    // 3. Save to fremwork.registrations for standard sync
-    try {
-      const curFw = JSON.parse(localStorage.getItem('fremwork.registrations') || '{}');
-      curFw[ev.id] = {
-        id: newReg.id,
-        eventId: ev.id,
-        cancelToken: 'local-' + newReg.id,
-        answers: {
-          name: newReg.name,
-          email: newReg.email,
-          phone: newReg.phone,
-          company: newReg.company,
-          role: newReg.role,
-          size: newReg.companySize,
-          heard: newReg.heardFrom,
-        },
-      };
-      localStorage.setItem('fremwork.registrations', JSON.stringify(curFw));
-    } catch {}
-
-    // 4. Try backend API in background if online
-    try {
-      api(`/events/${ev.id}/registrations`, {
-        method: 'POST',
-        body: {
-          name: newReg.name,
-          email: newReg.email,
-          phone: newReg.phone,
-          company: newReg.company,
-          role: newReg.role,
-          size: newReg.companySize,
-          heard: newReg.heardFrom,
-        },
-      }).catch(() => {});
-    } catch {}
-
-    setRegSuccessNotice(`You're registered for "${ev.title}"!`);
-    setTimeout(() => setRegSuccessNotice(''), 3500);
-    setModalEvent(null);
+      const r = await api<Registration>(`/events/${ev.id}/registrations`, { method: 'POST', body: answers });
+      const next = { ...regs, [ev.id]: { ...r, answers } };
+      setRegs(next);
+      saveRegs(next);
+      setRegSuccessNotice(`You're registered for "${ev.title}".`);
+      setModalEvent(null);
+    } catch (err) {
+      setFormErr(err instanceof ApiError || err instanceof Error ? err.message : 'We could not register you. Try again.');
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const handleCancelRegistration = (evId: string) => {
-    setRegisteredIds((prev) => {
-      const next = prev.filter((x) => x !== evId);
+  const handleCancelRegistration = async (evId: string) => {
+    const r = regs[evId];
+    if (r) {
       try {
-        localStorage.setItem('fw_user_registered_events', JSON.stringify(next));
-      } catch {}
-      return next;
-    });
-    try {
-      const rawAdmin = localStorage.getItem('fw_admin_registrations');
-      if (rawAdmin) {
-        const list = JSON.parse(rawAdmin);
-        localStorage.setItem('fw_admin_registrations', JSON.stringify(list.filter((r: any) => r.eventId !== evId)));
+        await api(`/registrations/${r.id}?token=${encodeURIComponent(r.cancelToken)}`, { method: 'DELETE' });
+      } catch (err) {
+        // Already gone on the server: forget it here too. Anything else: keep it and say so.
+        if (!(err instanceof ApiError && err.status === 404)) return setRegSuccessNotice((err as Error).message || 'We could not cancel. Try again.');
       }
-      const curFw = JSON.parse(localStorage.getItem('fremwork.registrations') || '{}');
-      delete curFw[evId];
-      localStorage.setItem('fremwork.registrations', JSON.stringify(curFw));
-    } catch {}
+    }
+    const next = { ...regs };
+    delete next[evId];
+    setRegs(next);
+    saveRegs(next);
     setModalEvent(null);
   };
 
   const downloadCalendarFile = (ev: EventItem) => {
-    const mins = parseInt(ev.length, 10) || 60;
-    const start = new Date(Date.now() + 3 * 864e5);
-    const end = new Date(start.getTime() + mins * 60000);
-    const f = (d: Date) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-    const ics = [
-      'BEGIN:VCALENDAR',
-      'VERSION:2.0',
-      'PRODID:-//Fremwork//Events//EN',
-      'BEGIN:VEVENT',
-      `UID:${ev.id}@fremwork`,
-      `DTSTAMP:${f(new Date())}`,
-      `DTSTART:${f(start)}`,
-      `DTEND:${f(end)}`,
-      `SUMMARY:${ev.title}`,
-      `LOCATION:${ev.location}`,
-      'END:VEVENT',
-      'END:VCALENDAR',
-    ].join('\r\n');
-    const url = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `fremwork-${ev.title.toLowerCase().replace(/[^a-z0-9]/g, '-')}.ics`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    if (!downloadIcs({ ...ev, startsAt: ev.startsAt ?? null })) setRegSuccessNotice('The date for this event is not set yet.');
   };
 
-  const filteredEvents = DEFAULT_EVENTS.filter((ev) => {
+  const filteredEvents = events.filter((ev) => {
     if (filter === 'All') return true;
     if (filter === 'Webinars') return ev.type === 'WEBINAR';
     if (filter === 'Workshops') return ev.type === 'WORKSHOP';
@@ -1230,7 +1145,7 @@ export function UserDashboard({ userName, onLogout, defaultTab = 'home' }: UserD
                       textTransform: 'uppercase',
                     }}
                   >
-                    NEXT UP · {DEFAULT_EVENTS[0].type}
+                    NEXT UP · {featured.type}
                   </span>
                   <h3
                     style={{
@@ -1243,21 +1158,21 @@ export function UserDashboard({ userName, onLogout, defaultTab = 'home' }: UserD
                       maxWidth: '220px',
                     }}
                   >
-                    {DEFAULT_EVENTS[0].title}
+                    {featured.title}
                   </h3>
                   <p style={{ margin: '4px 0 16px', fontSize: '13px', color: '#5E5E5E' }}>
-                    {DEFAULT_EVENTS[0].whenLabel} · {DEFAULT_EVENTS[0].location}
+                    {featured.whenLabel} · {featured.location}
                   </p>
                   <div>
                     <button
                       type="button"
-                      onClick={() => handleOpenRegister(DEFAULT_EVENTS[0])}
+                      onClick={() => handleOpenRegister(featured)}
                       style={{
                         fontFamily: 'inherit',
                         fontSize: '14px',
                         fontWeight: 500,
-                        color: registeredIds.includes(DEFAULT_EVENTS[0].id) ? '#0A0A0A' : '#FFFFFF',
-                        background: registeredIds.includes(DEFAULT_EVENTS[0].id) ? '#FFFFFF' : '#0A0A0A',
+                        color: registeredIds.includes(featured.id) ? '#0A0A0A' : '#FFFFFF',
+                        background: registeredIds.includes(featured.id) ? '#FFFFFF' : '#0A0A0A',
                         border: '1px solid #0A0A0A',
                         borderRadius: '6px',
                         padding: '9px 18px',
@@ -1265,17 +1180,17 @@ export function UserDashboard({ userName, onLogout, defaultTab = 'home' }: UserD
                         transition: 'all 0.15s ease',
                       }}
                       onMouseEnter={(e) => {
-                        if (!registeredIds.includes(DEFAULT_EVENTS[0].id)) {
+                        if (!registeredIds.includes(featured.id)) {
                           e.currentTarget.style.background = '#2B2B2B';
                         }
                       }}
                       onMouseLeave={(e) => {
-                        if (!registeredIds.includes(DEFAULT_EVENTS[0].id)) {
+                        if (!registeredIds.includes(featured.id)) {
                           e.currentTarget.style.background = '#0A0A0A';
                         }
                       }}
                     >
-                      {registeredIds.includes(DEFAULT_EVENTS[0].id) ? 'You’re in ✓' : 'Register'}
+                      {registeredIds.includes(featured.id) ? 'You’re in ✓' : 'Register'}
                     </button>
                   </div>
                 </div>
@@ -1773,7 +1688,7 @@ export function UserDashboard({ userName, onLogout, defaultTab = 'home' }: UserD
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ color: '#8C8C8C' }}>Email:</span>
-                        <span style={{ fontWeight: 500, color: '#0A0A0A' }}>{formEmail || 'user@example.com'}</span>
+                        <span style={{ fontWeight: 500, color: '#0A0A0A' }}>{formEmail}</span>
                       </div>
                       {formPhone && (
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -2096,6 +2011,8 @@ export function UserDashboard({ userName, onLogout, defaultTab = 'home' }: UserD
                     {/* Submit Button */}
                     <button
                       type="submit"
+                      disabled={busy}
+                      aria-busy={busy}
                       style={{
                         marginTop: '8px',
                         padding: '13px 20px',
@@ -2106,7 +2023,8 @@ export function UserDashboard({ userName, onLogout, defaultTab = 'home' }: UserD
                         fontSize: '14px',
                         fontWeight: 500,
                         fontFamily: 'inherit',
-                        cursor: 'pointer',
+                        cursor: busy ? 'wait' : 'pointer',
+                        opacity: busy ? 0.7 : 1,
                         transition: 'background 0.15s ease',
                       }}
                       onMouseEnter={(e) => {
@@ -2116,7 +2034,7 @@ export function UserDashboard({ userName, onLogout, defaultTab = 'home' }: UserD
                         e.currentTarget.style.background = '#0A0A0A';
                       }}
                     >
-                      Complete registration
+                      {busy ? 'Registering…' : 'Complete registration'}
                     </button>
                   </form>
                 )}

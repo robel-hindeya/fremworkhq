@@ -3,60 +3,42 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { UserDashboard } from '@/components/screens/UserDashboard';
+import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 
+interface Viewer { name: string; email: string }
+
+/** Signed-in dashboard. The middleware already sends signed-out visitors to /login. */
 export default function UserHomePage() {
   const router = useRouter();
-  const [userName, setUserName] = useState<string | null>(null);
-  const [checked, setChecked] = useState(false);
+  const [viewer, setViewer] = useState<Viewer | null>(null);
 
   useEffect(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        const local = localStorage.getItem('fw_user');
-        if (local) {
-          const u = JSON.parse(local);
-          if (u.signedIn || u.signedUp) {
-            setUserName(u.name || u.email || 'User');
-            document.cookie = 'fw_logged_in=1; path=/; max-age=2592000';
-            setChecked(true);
-            return;
-          }
-        }
-      }
-    } catch {}
-    // If not logged in, redirect to login page
-    router.replace('/login');
+    const supabase = getSupabaseBrowserClient();
+    supabase.auth.getUser().then(({ data }) => {
+      const u = data.user;
+      if (!u) return router.replace('/login');
+      const name = (u.user_metadata?.full_name as string | undefined)?.trim() || u.email?.split('@')[0] || 'there';
+      setViewer({ name, email: u.email ?? '' });
+    }, () => router.replace('/login'));
   }, [router]);
 
-  const onLogout = () => {
+  const onLogout = async () => {
     try {
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('fw_user');
-        document.cookie = 'fw_logged_in=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-      }
-    } catch {}
+      await getSupabaseBrowserClient().auth.signOut();
+    } catch {
+      /* signed out locally either way */
+    }
     router.replace('/');
+    router.refresh();
   };
 
-  if (!checked || !userName) {
+  if (!viewer) {
     return (
-      <div
-        style={{
-          minHeight: '100vh',
-          width: '100vw',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: '#FAFAF8',
-          fontFamily: "'Geist', system-ui, sans-serif",
-          color: '#8C8C8C',
-          fontSize: '14px',
-        }}
-      >
-        Loading...
+      <div role="status" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#FAFAF8', fontFamily: "'Geist', system-ui, sans-serif", color: '#8C8C8C', fontSize: '14px' }}>
+        Loading…
       </div>
     );
   }
 
-  return <UserDashboard userName={userName} onLogout={onLogout} defaultTab="home" />;
+  return <UserDashboard userName={viewer.name} userEmail={viewer.email} onLogout={onLogout} defaultTab="home" />;
 }

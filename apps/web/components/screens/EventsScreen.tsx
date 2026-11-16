@@ -1,16 +1,17 @@
 'use client';
 
-import { Fragment } from 'react';
 import { identifyVisitor } from '@/components/VisitTracker';
 import Link from 'next/link';
 import { FramSvg, type FramFace } from '@/components/fram/FramSvg';
 import '@/styles/events.css';
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type MouseEvent } from 'react';
+import { Fragment, useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type MouseEvent } from 'react';
 import { useFram } from '@/components/fram/useFram';
 import { useMergeState } from '@/components/fram/useMergeState';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
-import { api, type EventType, type PublicEvent, type PublicSettings, type Registration } from '@/lib/api';
+import { api, ApiError, type EventType, type PublicEvent, type PublicSettings, type Registration } from '@/lib/api';
 import { EMAIL_RE, formatWhen } from '@/lib/format';
+import { downloadIcs } from '@/lib/ics';
+import { loadRegs, saveRegs } from '@/lib/registrations';
 
 // Registration questions. Two kinds: 'text' (also 'email') for typed answers, 'select' for a dropdown.
 const TELEGRAM_URL = 'https://t.me/fremwork';
@@ -29,30 +30,6 @@ const GLOW: Record<EventType, string> = { WEBINAR: 'rgba(198,244,50,0.8)', WORKS
 const TAG_BG: Record<EventType, string> = { WEBINAR: '#C6F432', WORKSHOP: '#DCE3FF', MEETUP: '#FFE7C2', 'OFFICE HOURS': '#EDEDED' };
 const KIND: Record<EventType, string> = { WEBINAR: 'Webinars', WORKSHOP: 'Workshops', MEETUP: 'Meetups', 'OFFICE HOURS': 'Office hours' };
 const FILTERS = ['All', 'Webinars', 'Workshops', 'Meetups', 'Office hours'];
-const STORE = 'fremwork.registrations';
-
-function loadRegs(): Record<string, Registration> {
-  try { return JSON.parse(localStorage.getItem(STORE) || '{}'); } catch { return {}; }
-}
-function saveRegs(r: Record<string, Registration>) {
-  try { localStorage.setItem(STORE, JSON.stringify(r)); } catch {}
-}
-
-/** A calendar file for events that have a real date. */
-function downloadIcs(e: PublicEvent) {
-  if (!e.startsAt) return false;
-  const start = new Date(e.startsAt);
-  const mins = parseInt(e.length, 10) || 60;
-  const end = new Date(start.getTime() + mins * 60000);
-  const f = (d: Date) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Fremwork//Events//EN', 'BEGIN:VEVENT', `UID:${e.id}@fremwork`, `DTSTAMP:${f(new Date())}`, `DTSTART:${f(start)}`, `DTEND:${f(end)}`, `SUMMARY:${e.title}`, `LOCATION:${e.location}`, 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
-  const url = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
-  const a = document.createElement('a');
-  a.href = url; a.download = 'fremwork-event.ics';
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  return true;
-}
 
 /** Events · ported from Events.dc.html. Events come from the API; registrations post to it. */
 export function EventsScreen({ initialEvents, settings }: { initialEvents: PublicEvent[]; settings: PublicSettings | null }) {
@@ -150,7 +127,12 @@ export function EventsScreen({ initialEvents, settings }: { initialEvents: Publi
     const ev = events[st.regOpen];
     const r = st.reg[ev.id];
     if (r) {
-      try { await api(`/registrations/${r.id}?token=${encodeURIComponent(r.cancelToken)}`, { method: 'DELETE' }); } catch {}
+      try {
+        await api(`/registrations/${r.id}?token=${encodeURIComponent(r.cancelToken)}`, { method: 'DELETE' });
+      } catch (err) {
+        // Already gone on the server: forget it here too. Anything else: keep it and say so.
+        if (!(err instanceof ApiError && err.status === 404)) return set({ regFormErr: (err as Error).message });
+      }
     }
     const next = { ...st.reg };
     delete next[ev.id];

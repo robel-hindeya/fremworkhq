@@ -45,7 +45,7 @@ export class TeamService {
     // Already has an account: promote right away.
     const { data: existing } = await db.from('profiles').select('id, role').ilike('email', like).maybeSingle();
     if (existing) {
-      if (existing.role === 'member') await db.from('profiles').update({ role: 'admin' }).eq('id', existing.id);
+      if (existing.role === 'member') SupabaseService.check(await db.from('profiles').update({ role: 'admin' }).eq('id', existing.id));
       return { name: nameFromEmail(em), email: em, role: existing.role === 'owner' ? 'owner' : 'admin' };
     }
 

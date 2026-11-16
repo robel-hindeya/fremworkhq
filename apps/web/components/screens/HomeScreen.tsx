@@ -1,11 +1,9 @@
 'use client';
 
-import { Fragment } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { FramSvg, type FramFace } from '@/components/fram/FramSvg';
 import '@/styles/home.css';
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type MouseEvent } from 'react';
+import { Fragment, useEffect, useMemo, useRef, type ChangeEvent, type FormEvent, type MouseEvent } from 'react';
 import { faceFrom, useBlinkWave } from '@/components/fram/useFram';
 import type { FramMood } from '@/components/fram/FramSvg';
 import { useMergeState } from '@/components/fram/useMergeState';
@@ -29,27 +27,7 @@ const mm = (q: string) => window.matchMedia?.(q).matches ?? false;
 
 /** Homepage · ported from Main.dc.html. */
 export function HomeScreen() {
-  const router = useRouter();
   const { blink, wave, triggerWave, env } = useBlinkWave();
-  const [currentUser, setCurrentUser] = useState<string | null>(null);
-
-  useEffect(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        const local = localStorage.getItem('fw_user');
-        if (local) {
-          const u = JSON.parse(local);
-          if (u.signedIn || u.signedUp) {
-            setCurrentUser(u.name || u.email || 'User');
-            document.cookie = 'fw_logged_in=1; path=/; max-age=2592000';
-            router.replace('/home');
-            return;
-          }
-        }
-      }
-    } catch {}
-  }, [router]);
-
   const [s, set, get] = useMergeState({
     ex: 0, ey: 0, mood: 'smile' as FramMood, squint: false, cardTx: 0, cardTy: 0, cardRot: 0,
     chatIdx: 0, chatFlip: false, draft: '',
@@ -257,52 +235,8 @@ export function HomeScreen() {
       <Link href="/events" className="navi" style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: "4px", minWidth: "84px", padding: "8px 12px 10px", textDecoration: "none", fontSize: "13px", fontWeight: "500", color: "#8C8C8C" }}><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" style={{ display: "block" }}><path d="M4.5 6 H19.5 V20 H4.5 Z M4.5 10.5 H19.5 M8.5 3.5 V7.5 M15.5 3.5 V7.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"></path></svg><span>Events</span><span aria-hidden="true" style={{ position: "absolute", bottom: "2px", left: "50%", width: "4px", height: "4px", marginLeft: "-2px", borderRadius: "50%", background: "#0A0A0A", opacity: "0" }}></span></Link>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-      {currentUser ? (
-        <>
-          <Link
-            href="/login"
-            className="navi desk-login"
-            style={{
-              color: "#0A0A0A",
-              textDecoration: "none",
-              fontSize: "14px",
-              fontWeight: "600",
-              padding: "10px 14px",
-              borderRadius: "999px",
-              background: "#F1F1EC",
-            }}
-          >
-            {currentUser}
-          </Link>
-          <button
-            type="button"
-            onClick={() => {
-              try {
-                localStorage.removeItem('fw_user');
-              } catch {}
-              setCurrentUser(null);
-            }}
-            style={{
-              background: "transparent",
-              border: "1px solid #E2E2DF",
-              color: "#5E5E5E",
-              fontFamily: "inherit",
-              fontSize: "13px",
-              fontWeight: "500",
-              padding: "10px 18px",
-              borderRadius: "999px",
-              cursor: "pointer",
-            }}
-          >
-            Log out
-          </button>
-        </>
-      ) : (
-        <>
-          <Link href="/login" className="navi desk-login" style={{ color: "#5E5E5E", textDecoration: "none", fontSize: "14px", fontWeight: "500", padding: "12px 16px" }}>Log in</Link>
-          <Link href="/signup" className="desk-cta" style={{ background: "#0A0A0A", color: "#FFFFFF", textDecoration: "none", fontSize: "14px", fontWeight: "500", padding: "14px 22px", borderRadius: "999px", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18)", whiteSpace: "nowrap" }}>Sign Up</Link>
-        </>
-      )}
+      <Link href="/login" className="navi desk-login" style={{ color: "#5E5E5E", textDecoration: "none", fontSize: "14px", fontWeight: "500", padding: "12px 16px" }}>Log in</Link>
+      <Link href="/signup" className="desk-cta" style={{ background: "#0A0A0A", color: "#FFFFFF", textDecoration: "none", fontSize: "14px", fontWeight: "500", padding: "14px 22px", borderRadius: "999px", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18)", whiteSpace: "nowrap" }}>Sign Up</Link>
       </div>
       </nav>
       </header>

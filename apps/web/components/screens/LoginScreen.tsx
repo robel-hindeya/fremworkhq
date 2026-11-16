@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { FramSvg, type FramFace } from '@/components/fram/FramSvg';
-import { UserDashboard } from '@/components/screens/UserDashboard';
 import '@/styles/login.css';
 import { useEffect, type ChangeEvent, type FormEvent, type MouseEvent } from 'react';
 import { useRouter } from 'next/navigation';
@@ -12,13 +11,11 @@ import { useMergeState } from '@/components/fram/useMergeState';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { EMAIL_RE } from '@/lib/format';
 import { authMessage, isNetworkError, UNREACHABLE } from '@/lib/auth-errors';
+import { callbackUrl } from '@/components/screens/auth-parts';
 
-// Always return to the domain the visitor is on (www, bare domain, Render, localhost): the PKCE
-// verifier cookie lives there, so a different domain cannot finish the sign-in.
-const siteUrl = () => window.location.origin;
 const nextParam = () => {
   const n = new URLSearchParams(window.location.search).get('next');
-  return n && ['/open-app', '/set-password'].includes(n) ? n : null;
+  return n && ['/open-app', '/set-password', '/admin'].includes(n) ? n : null;
 };
 
 /** Log in · ported from Login.dc.html, backed by Supabase Auth. */
@@ -29,29 +26,13 @@ export function LoginScreen() {
     email: '', password: '', peek: false, emailErr: '', passErr: '', notice: '', loading: false, done: false,
   });
 
-  // Already signed in? Redirect to /home.
+  // Already signed in: continue. Errors from the auth callback arrive as ?error=.
   useEffect(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        const local = localStorage.getItem('fw_user');
-        if (local) {
-          const u = JSON.parse(local);
-          if (u.signedIn || u.signedUp) {
-            document.cookie = 'fw_logged_in=1; path=/; max-age=2592000';
-            router.replace('/home');
-            return;
-          }
-        }
-      }
-    } catch {}
     supabase.auth.getUser().then(({ data }) => {
-      if (data.user) {
-        document.cookie = 'fw_logged_in=1; path=/; max-age=2592000';
-        router.replace('/home');
-      }
-    });
+      if (data.user) router.replace(nextParam() ?? '/open-app');
+    }, () => undefined);
     const err = new URLSearchParams(window.location.search).get('error');
-    if (err) set({ notice: err });
+    if (err) set({ notice: err.slice(0, 200) });
   }, [supabase, router, set]);
 
   const fram = useFram(s.done ? 'grin' : s.emailErr || s.passErr ? 'o' : '');
@@ -61,97 +42,35 @@ export function LoginScreen() {
     const st = get();
     if (st.loading) return;
     const em = st.email.trim();
-    const pw = st.password;
-
-    if (!em) {
-      return set({ emailErr: 'Enter your name or email.', passErr: '', notice: '' });
-    }
-    if (!pw) {
-      return set({ emailErr: '', passErr: 'Enter your password.', notice: '' });
-    }
+    if (!EMAIL_RE.test(em)) return set({ emailErr: 'Enter a valid email, like you@company.com.', passErr: '', notice: '' });
+    if (!st.password) return set({ emailErr: '', passErr: 'Enter your password.', notice: '' });
 
     set({ loading: true, emailErr: '', passErr: '', notice: '' });
-
-    // Check localStorage accounts first (supports local signup account)
-    let foundAccount: { name?: string; email?: string; password?: string; signedUp?: boolean } | null = null;
-    try {
-      if (typeof window !== 'undefined') {
-        const savedUsers: Array<{ name?: string; email?: string; password?: string; signedUp?: boolean }> =
-          JSON.parse(localStorage.getItem('fw_accounts') || '[]');
-        const singleUserStr = localStorage.getItem('fw_user');
-        const singleUser = singleUserStr ? JSON.parse(singleUserStr) : null;
-        if (singleUser) savedUsers.push(singleUser);
-
-        foundAccount =
-          savedUsers.find(
-            (u) =>
-              u?.name?.trim().toLowerCase() === em.toLowerCase() ||
-              u?.email?.trim().toLowerCase() === em.toLowerCase()
-          ) ?? null;
-      }
-    } catch {}
-
-    // If an account is registered with a password, check it; otherwise sign in!
-    if (foundAccount && foundAccount.password && foundAccount.password !== pw) {
-      return set({ loading: false, passErr: 'Password does not match.' });
+    const { error } = await supabase.auth.signInWithPassword({ email: em, password: st.password });
+    if (error) {
+      if (isNetworkError(error)) return set({ loading: false, notice: UNREACHABLE });
+      if (/confirm/i.test(error.message)) return set({ loading: false, notice: 'Confirm your email first. Open the link we sent you, then log in.' });
+      return set({ loading: false, passErr: 'That email and password do not match.' });
     }
-
-    const sessionUser = foundAccount || {
-      name: em,
-      email: em,
-      signedUp: true,
-      at: new Date().toISOString(),
-    };
-
-    try {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('fw_user', JSON.stringify({ ...sessionUser, signedIn: true }));
-        document.cookie = 'fw_logged_in=1; path=/; max-age=2592000';
-      }
-    } catch {}
-
-    if (EMAIL_RE.test(em)) {
-      try {
-        await supabase.auth.signInWithPassword({ email: em, password: pw });
-      } catch {}
-    }
-
-    set({ done: true, email: sessionUser.name || em, loading: false });
-    const target = nextParam() ?? '/home';
-    router.replace(target);
+    set({ done: true, loading: false });
+    router.replace(nextParam() ?? '/open-app');
     router.refresh();
   };
 
   const onForgot = async (e: MouseEvent) => {
     e.preventDefault();
     const em = get().email.trim();
-    if (!em) return set({ notice: 'Enter your name or email above.' });
-    set({ notice: `Password reset instructions sent for ${em}.` });
+    if (!EMAIL_RE.test(em)) return set({ emailErr: 'Enter your email above, then choose Forgot.', notice: '' });
+    const { error } = await supabase.auth.resetPasswordForEmail(em, { redirectTo: callbackUrl('/set-password') });
+    if (error && isNetworkError(error)) return set({ notice: UNREACHABLE });
+    // Same answer whether or not the account exists.
+    set({ emailErr: '', notice: `If ${em} has an account, we sent a link to reset the password.` });
   };
 
   const onSso = (provider: Provider) => async () => {
-    const user = { name: 'Google User', email: 'user@gmail.com', signedIn: true, at: new Date().toISOString() };
-    try {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('fw_user', JSON.stringify(user));
-        document.cookie = 'fw_logged_in=1; path=/; max-age=2592000';
-      }
-    } catch {}
-    router.replace('/home');
-  };
-
-  const onReset = async () => {
-    try {
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('fw_user');
-        document.cookie = 'fw_logged_in=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-      }
-    } catch {}
-    try {
-      await supabase.auth.signOut();
-    } catch {}
-    set({ done: false, password: '', peek: false, notice: '', emailErr: '', passErr: '' });
-    router.replace('/');
+    set({ notice: '' });
+    const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: callbackUrl(nextParam() ?? '/open-app') } });
+    if (error) set({ notice: authMessage(error) });
   };
 
   // Template bindings for the ported markup (values mirror the design file's renderVals).
@@ -162,21 +81,13 @@ export function LoginScreen() {
     emailErr: s.emailErr, passErr: s.passErr,
     emailInvalid: s.emailErr ? 'true' : 'false', passInvalid: s.passErr ? 'true' : 'false',
     emailBorder: s.emailErr ? '#B42318' : '#E2E2DF', passBorder: s.passErr ? '#B42318' : '#E2E2DF',
-    passType: s.peek ? 'text' : 'password',
-    peekLabel: s.peek ? 'Hide password' : 'Show password', peekPressed: s.peek ? 'true' : 'false',
-    peekSlash: s.peek ? 'M4 4 L20 20' : 'M0 0',
     loading: s.loading, submitLabel: s.loading ? 'Logging in…' : 'Log in',
     notice: s.notice,
-    showForm: !s.done, done: s.done,
     onEmail: (e: ChangeEvent<HTMLInputElement>) => set({ email: e.target.value, emailErr: '', notice: '' }),
     onPass: (e: ChangeEvent<HTMLInputElement>) => set({ password: e.target.value, passErr: '', notice: '' }),
     onPeek: () => set({ peek: !get().peek }),
-    onForgot, onSso, onSubmit, onReset,
+    onForgot, onSso, onSubmit,
   };
-
-  if (s.done) {
-    return <UserDashboard userName={s.email || 'User'} onLogout={onReset} defaultTab="home" />;
-  }
 
   return (
       <div className="pg-login">
@@ -205,9 +116,9 @@ export function LoginScreen() {
       <p style={{ margin: "10px 0 0", fontSize: "14px", lineHeight: "22px", color: "#8C8C8C" }}>Log in to ask your numbers anything, from cash and margin to overdue invoices, in one place.</p>
       <form onSubmit={v.onSubmit} noValidate style={{ marginTop: "28px", display: "flex", flexDirection: "column", gap: "16px" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
-      <label htmlFor="login-email" style={{ fontSize: "13px", fontWeight: "500" }}>Your name or email</label>
+      <label htmlFor="login-email" style={{ fontSize: "13px", fontWeight: "500" }}>Email</label>
       <div className="field" style={{ background: "#FFFFFF", border: `1px solid ${v.emailBorder}`, borderRadius: "6px" }}>
-      <input id="login-email" type="text" autoComplete="username" placeholder="Your name or email" value={v.email} onChange={v.onEmail} aria-invalid={v.emailInvalid} style={{ width: "100%", boxSizing: "border-box", border: "0", outline: "none", background: "transparent", fontFamily: "inherit", fontSize: "15px", color: "#0A0A0A", padding: "12px 14px" }} />
+      <input id="login-email" type="email" autoComplete="email" placeholder="you@company.com" value={v.email} onChange={v.onEmail} aria-invalid={v.emailInvalid} style={{ width: "100%", boxSizing: "border-box", border: "0", outline: "none", background: "transparent", fontFamily: "inherit", fontSize: "15px", color: "#0A0A0A", padding: "12px 14px" }} />
       </div>
       {v.emailErr ? (<><span style={{ fontSize: "12px", color: "#B42318" }}>{v.emailErr}</span></>) : null}
       </div>
@@ -218,9 +129,9 @@ export function LoginScreen() {
       <button
         type="button"
         className="peek"
-        tabIndex={-1}
         onMouseDown={(e) => e.preventDefault()}
         onClick={v.onPeek}
+        aria-pressed={s.peek}
         aria-label={s.peek ? 'Hide password' : 'Show password'}
         title={s.peek ? 'Hide password' : 'Show password'}
         style={{
@@ -274,7 +185,7 @@ export function LoginScreen() {
       </div>
       {v.passErr ? (<><span style={{ fontSize: "12px", color: "#B42318" }}>{v.passErr}</span></>) : null}
       </div>
-      <button type="submit" className="btn-dark" style={{ marginTop: "10px", width: "100%", minHeight: "46px", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", fontFamily: "inherit", fontSize: "15px", fontWeight: "500", color: "#FFFFFF", background: "#0A0A0A", border: "0", borderRadius: "6px", padding: "12px 20px", cursor: "pointer", transition: "background .2s", boxShadow: "0 10px 24px rgba(10,10,10,0.22), inset 0 1px 0 rgba(255,255,255,0.12)" }}>
+      <button type="submit" className="btn-dark" disabled={v.loading} aria-busy={v.loading} style={{ marginTop: "10px", width: "100%", minHeight: "46px", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", fontFamily: "inherit", fontSize: "15px", fontWeight: "500", color: "#FFFFFF", background: "#0A0A0A", border: "0", borderRadius: "6px", padding: "12px 20px", cursor: "pointer", transition: "background .2s", boxShadow: "0 10px 24px rgba(10,10,10,0.22), inset 0 1px 0 rgba(255,255,255,0.12)" }}>
       {v.loading ? (<><span className="spin" aria-hidden="true" style={{ width: "15px", height: "15px", borderRadius: "50%", border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#FFFFFF" }}></span></>) : null}
       {v.submitLabel}
       </button>

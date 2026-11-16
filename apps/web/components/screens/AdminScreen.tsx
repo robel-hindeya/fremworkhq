@@ -1,13 +1,12 @@
 'use client';
 
 import { AdminEmailComposer } from '@/components/AdminEmailComposer';
-import { Fragment } from 'react';
 import Link from 'next/link';
 import '@/styles/admin.css';
-import { useCallback, useEffect, useRef, type ChangeEvent, type MouseEvent } from 'react';
+import { Fragment, useCallback, useEffect, useRef, type ChangeEvent, type MouseEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMergeState } from '@/components/fram/useMergeState';
-import { api, downloadFromApi, type EventType } from '@/lib/api';
+import { api, ApiError, downloadFromApi, type EventType } from '@/lib/api';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { EMAIL_RE, formatShortDate, formatWhen, initials, timeAgo } from '@/lib/format';
 
@@ -127,55 +126,6 @@ function signupBuckets(dates: string[], range: Range) {
 const sw = (on: boolean) => ({ on: on ? 'true' : 'false', bg: on ? '#0A0A0A' : '#D6D6D2', left: on ? '19px' : '3px' });
 const DEFAULT_SETTINGS: Settings = { acceptSignups: true, welcomeEmail: true, askCompany: true, alertInstant: true, alertDigest: false, notifyEmail: '', requiredFields: { name: true, email: true } };
 
-const SAMPLE_ME: Me = { id: 'admin', email: 'admin@fremwork.com', name: 'Admin', role: 'owner', isAdmin: true };
-const SAMPLE_EVENTS: AdminEvent[] = [
-  { id: '1', type: 'WEBINAR', title: 'Live demo: ask your numbers anything', description: 'Watch Fremwork answer real finance questions, from cash runway to overdue invoices. Bring your own.', length: '45 min', whenLabel: 'Nov 20 · 2:00 PM', startsAt: '2026-11-20T14:00:00Z', location: 'Online', capacity: 200, published: true, registrations: 34 },
-  { id: '2', type: 'WORKSHOP', title: 'Close the month faster', description: 'A hands-on session for controllers and accountants on reconciling, accruals and the month-end checklist.', length: '60 min', whenLabel: 'Nov 25 · 10:00 AM', startsAt: '2026-11-25T10:00:00Z', location: 'Online', capacity: 60, published: true, registrations: 18 },
-  { id: '3', type: 'MEETUP', title: 'Finance teams breakfast', description: 'Coffee and honest talk about budgets, tools and what keeps finance leads up at night.', length: '90 min', whenLabel: 'Dec 02 · 9:00 AM', startsAt: '2026-12-02T09:00:00Z', location: 'In person · Addis Ababa', capacity: 30, published: true, registrations: 12 },
-  { id: '4', type: 'WEBINAR', title: 'Budget vs actual, explained', description: 'For managers who own a budget but not a finance degree. Plain language, real examples.', length: '30 min', whenLabel: 'Dec 10 · 3:00 PM', startsAt: '2026-12-10T15:00:00Z', location: 'Online', capacity: 150, published: true, registrations: 45 },
-  { id: '5', type: 'OFFICE HOURS', title: 'Fremwork office hours', description: 'Drop in with questions about the product, the waitlist or your setup. No slides.', length: 'Weekly', whenLabel: 'Every Friday · 4:00 PM', startsAt: null, location: 'Online', capacity: 25, published: true, registrations: 9 },
-  { id: '6', type: 'WORKSHOP', title: 'Cash runway for founders', description: 'Work out how many months you have, what moves the number and what to do next.', length: '60 min', whenLabel: 'Dec 18 · 11:00 AM', startsAt: '2026-12-18T11:00:00Z', location: 'Online', capacity: 60, published: false, registrations: 0 },
-];
-const SAMPLE_WL: WlEntry[] = [
-  { id: 1, name: 'Maya Torres', email: 'maya@northlane.co', company: 'Northlane', role: 'Business owner', status: 'waiting', createdAt: new Date(Date.now() - 2 * 864e5).toISOString() },
-  { id: 2, name: 'Daniel Okafor', email: 'daniel@brightpay.io', company: 'BrightPay', role: 'Finance officer', status: 'waiting', createdAt: new Date(Date.now() - 3 * 864e5).toISOString() },
-  { id: 3, name: 'Lena Fischer', email: 'lena@koda.studio', company: 'Koda Studio', role: 'Accountant', status: 'invited', createdAt: new Date(Date.now() - 3 * 864e5).toISOString() },
-  { id: 4, name: 'Samir Haddad', email: 'samir@palmgrove.com', company: 'Palmgrove', role: 'Manager', status: 'waiting', createdAt: new Date(Date.now() - 4 * 864e5).toISOString() },
-  { id: 5, name: 'Grace Lin', email: 'grace@ledgerly.app', company: 'Ledgerly', role: 'Analyst', status: 'active', createdAt: new Date(Date.now() - 5 * 864e5).toISOString() },
-  { id: 6, name: 'Tom Becker', email: 'tom@harbourfoods.com', company: 'Harbour Foods', role: 'Business owner', status: 'invited', createdAt: new Date(Date.now() - 6 * 864e5).toISOString() },
-  { id: 7, name: 'Ana Silva', email: 'ana@vertex.dev', company: 'Vertex', role: 'Finance officer', status: 'waiting', createdAt: new Date(Date.now() - 7 * 864e5).toISOString() },
-  { id: 8, name: 'Kofi Mensah', email: 'kofi@sunbird.co', company: 'Sunbird', role: 'Accountant', status: 'active', createdAt: new Date(Date.now() - 8 * 864e5).toISOString() },
-  { id: 9, name: 'Priya Nair', email: 'priya@fieldwork.io', company: 'Fieldwork', role: 'Analyst', status: 'waiting', createdAt: new Date(Date.now() - 9 * 864e5).toISOString() },
-  { id: 10, name: 'Jonas Berg', email: 'jonas@oakandiron.com', company: 'Oak & Iron', role: 'Manager', status: 'waiting', createdAt: new Date(Date.now() - 10 * 864e5).toISOString() },
-  { id: 11, name: 'Chloe Martin', email: 'chloe@petalco.shop', company: 'Petal Co', role: 'Business owner', status: 'invited', createdAt: new Date(Date.now() - 11 * 864e5).toISOString() },
-  { id: 12, name: 'Yusuf Kaya', email: 'yusuf@relaylabs.ai', company: 'Relay Labs', role: 'Other', status: 'waiting', createdAt: new Date(Date.now() - 12 * 864e5).toISOString() },
-];
-const SAMPLE_REGS: Reg[] = [
-  { id: 1, eventId: '1', name: 'Maya Torres', email: 'maya@northlane.co', company: 'Northlane', role: 'Business owner', companySize: '11–50', heardFrom: 'LinkedIn', checkedIn: true },
-  { id: 2, eventId: '1', name: 'Grace Lin', email: 'grace@ledgerly.app', company: 'Ledgerly', role: 'Analyst', companySize: '2–10', heardFrom: 'Newsletter', checkedIn: false },
-  { id: 3, eventId: '2', name: 'Lena Fischer', email: 'lena@koda.studio', company: 'Koda Studio', role: 'Accountant', companySize: '2–10', heardFrom: 'Friend or colleague', checkedIn: true },
-  { id: 4, eventId: '2', name: 'Kofi Mensah', email: 'kofi@sunbird.co', company: 'Sunbird', role: 'Accountant', companySize: '51–200', heardFrom: 'Search', checkedIn: false },
-  { id: 5, eventId: '3', name: 'Tom Becker', email: 'tom@harbourfoods.com', company: 'Harbour Foods', role: 'Business owner', companySize: '11–50', heardFrom: 'X (Twitter)', checkedIn: false },
-  { id: 6, eventId: '4', name: 'Samir Haddad', email: 'samir@palmgrove.com', company: 'Palmgrove', role: 'Manager', companySize: '200+', heardFrom: 'LinkedIn', checkedIn: false },
-];
-const SAMPLE_TEAM: TeamMember[] = [
-  { name: 'Admin', email: 'admin@fremwork.com', role: 'owner' },
-  { name: 'Sarah Chen', email: 'sarah@fremwork.com', role: 'admin' },
-];
-const SAMPLE_OVERVIEW: Overview = {
-  weeks: [4, 7, 12, 19, 23, 31, 28, 42],
-  activity: [
-    { kind: 'waitlist', text: 'Maya Torres joined the waitlist from Northlane.', at: new Date(Date.now() - 2 * 3600e3).toISOString() },
-    { kind: 'registration', text: 'Grace Lin registered for Live demo: ask your numbers anything.', at: new Date(Date.now() - 5 * 3600e3).toISOString() },
-    { kind: 'invite', text: 'Lena Fischer was invited.', at: new Date(Date.now() - 12 * 3600e3).toISOString() },
-    { kind: 'waitlist', text: 'Daniel Okafor joined the waitlist from BrightPay.', at: new Date(Date.now() - 24 * 3600e3).toISOString() },
-  ],
-};
-const SAMPLE_VISITORS: Visitor[] = [
-  { id: 1, name: 'Maya Torres', email: 'maya@northlane.co', ip: '197.156.103.1', userAgent: 'Mozilla/5.0 Chrome/120', referrer: 'https://google.com', firstPath: '/', lastPath: '/admin', visits: 4, firstSeen: new Date(Date.now() - 864e5).toISOString(), lastSeen: new Date().toISOString(), country: 'US', region: 'California', city: 'San Francisco', source: 'Google' },
-  { id: 2, name: 'Daniel Okafor', email: 'daniel@brightpay.io', ip: '102.89.44.12', userAgent: 'Mozilla/5.0 Safari/17.0', referrer: 'https://linkedin.com', firstPath: '/', lastPath: '/', visits: 2, firstSeen: new Date(Date.now() - 2 * 864e5).toISOString(), lastSeen: new Date(Date.now() - 864e5).toISOString(), country: 'GB', region: 'England', city: 'London', source: 'LinkedIn' },
-];
-
 /** Pre-fills the event panel for editing (date and time in the admin's local time zone). */
 function editForm(e: AdminEvent): Record<string, string> {
   const d = e.startsAt ? new Date(e.startsAt) : null;
@@ -188,62 +138,13 @@ function editForm(e: AdminEvent): Record<string, string> {
   };
 }
 
-/** Merges registrations created in the dashboard or app session into the admin data */
-function mergeLocalRegistrations(baseRegs: Reg[], baseEvents: AdminEvent[], baseOverview: Overview) {
-  let localRegs: Reg[] = [];
-  try {
-    if (typeof window !== 'undefined') {
-      const raw = localStorage.getItem('fw_admin_registrations');
-      if (raw) localRegs = JSON.parse(raw);
-    }
-  } catch {}
-
-  if (!localRegs.length) {
-    return { regs: baseRegs, events: baseEvents, overview: baseOverview };
-  }
-
-  // Prepend local registrations (avoiding duplicates)
-  const combinedRegs = [
-    ...localRegs,
-    ...baseRegs.filter((r) => !localRegs.some((lr) => lr.id === r.id || (lr.eventId === r.eventId && lr.email.toLowerCase() === r.email.toLowerCase()))),
-  ];
-
-  // Update counts on events
-  const countsByEv: Record<string, number> = {};
-  localRegs.forEach((lr) => {
-    countsByEv[lr.eventId] = (countsByEv[lr.eventId] || 0) + 1;
-  });
-
-  const updatedEvents = baseEvents.map((e) => ({
-    ...e,
-    registrations: e.registrations + (countsByEv[e.id] || 0),
-  }));
-
-  // Add recent activity entries
-  const localActivity = localRegs.map((lr) => {
-    const evTitle = updatedEvents.find((e) => e.id === lr.eventId)?.title || 'event';
-    return {
-      kind: 'registration',
-      text: `${lr.name} registered for ${evTitle}.`,
-      at: (lr as any).createdAt || new Date().toISOString(),
-    };
-  });
-
-  const updatedOverview: Overview = {
-    ...baseOverview,
-    activity: [...localActivity, ...(baseOverview.activity || [])],
-  };
-
-  return { regs: combinedRegs, events: updatedEvents, overview: updatedOverview };
-}
-
 /** Admin · ported from Admin.dc.html. Every list and action goes through the NestJS admin API. */
 export function AdminScreen() {
   const router = useRouter();
   const [s, set, get] = useMergeState({
     emailOpen: false, emailRecipients: [] as string[], emailEventTitle: '',
     tab: 'overview' as Tab, q: '', wlFilter: 'All', sel: {} as Record<number, boolean>, regSel: {} as Record<number, boolean>, regEv: 'all',
-    me: null as Me | null, denied: false, loading: true,
+    me: null as Me | null, denied: false, loading: true, loadError: '',
     wl: [] as WlEntry[], events: [] as AdminEvent[], regs: [] as Reg[], overview: { weeks: [], activity: [] } as Overview,
     settings: DEFAULT_SETTINGS, team: [] as TeamMember[], visitors: [] as Visitor[],
     notifyEmail: '', inviteEmail: '', inviteErr: '', dirty: false,
@@ -270,65 +171,39 @@ export function AdminScreen() {
         api<Settings>('/admin/settings', { auth: true }),
         api<TeamMember[]>('/admin/team', { auth: true }),
       ]);
-      const merged = mergeLocalRegistrations(regs, events, overview);
-      set({ me, overview: merged.overview, wl, events: merged.events, regs: merged.regs, settings, team, notifyEmail: settings.notifyEmail || '', loading: false });
+      // A refresh on window focus must not throw away settings the admin has not saved yet.
+      const keep = get().dirty;
+      set({
+        me, overview, wl, events, regs, team, loading: false, loadError: '',
+        ...(keep ? {} : { settings, notifyEmail: settings.notifyEmail || '' }),
+      });
       api<Visitor[]>('/admin/visitors', { auth: true }).then((visitors) => set({ visitors }), () => undefined);
       const editId = new URLSearchParams(window.location.search).get('edit');
-      const toEdit = editId ? merged.events.find((e) => e.id === editId) : undefined;
-      if (toEdit) set({ tab: 'events', drawer: true, neErr: '', ne: editForm(toEdit) });
-    } catch {
-      // In local/standalone view without Supabase Auth session, load admin profile and data
-      let adminMe = SAMPLE_ME;
-      try {
-        if (typeof window !== 'undefined') {
-          const savedAdmin = localStorage.getItem('fw_admin_user');
-          if (savedAdmin) {
-            const parsed = JSON.parse(savedAdmin);
-            adminMe = {
-              id: 'admin',
-              email: parsed.email || 'admin@fremwork.com',
-              name: parsed.name || 'Admin',
-              role: parsed.role || 'owner',
-              isAdmin: true,
-            };
-          }
-        }
-      } catch {}
-
-      const merged = mergeLocalRegistrations(SAMPLE_REGS, SAMPLE_EVENTS, SAMPLE_OVERVIEW);
-      set({
-        me: adminMe,
-        overview: merged.overview,
-        wl: SAMPLE_WL,
-        events: merged.events,
-        regs: merged.regs,
-        settings: DEFAULT_SETTINGS,
-        team: SAMPLE_TEAM,
-        visitors: SAMPLE_VISITORS,
-        notifyEmail: DEFAULT_SETTINGS.notifyEmail || '',
-        loading: false,
-      });
+      const toEdit = editId ? events.find((e) => e.id === editId) : undefined;
+      if (toEdit) {
+        set({ tab: 'events', drawer: true, neErr: '', ne: editForm(toEdit) });
+        // Open the editor once, not again on every window focus.
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    } catch (err) {
+      // Signed out or the session ended: log in again. Never fall back to sample data.
+      if (err instanceof ApiError && err.status === 401) return router.replace('/admin/login');
+      if (err instanceof ApiError && err.status === 403) return set({ denied: true, loading: false });
+      const message = (err as Error).message || 'We could not load the admin data. Try again.';
+      // A failed refresh (on window focus) keeps the data already on screen.
+      if (get().me) return flash(message);
+      set({ loading: false, loadError: message });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [set]);
+  }, [set, get, flash, router]);
 
   useEffect(() => {
-    // Admin access control gate: require admin authentication
-    if (typeof window !== 'undefined') {
-      const isAuth = localStorage.getItem('fw_admin_auth') === 'true';
-      if (!isAuth) {
-        router.replace('/admin/login');
-        return;
-      }
-    }
-
+    // The middleware already checked the session and role; the API checks again on every call.
     load();
     const handleFocus = () => load();
     window.addEventListener('focus', handleFocus);
-    window.addEventListener('storage', handleFocus);
     return () => {
       window.removeEventListener('focus', handleFocus);
-      window.removeEventListener('storage', handleFocus);
       clearTimeout(toastT.current);
     };
   }, [load, router]);
@@ -416,13 +291,10 @@ export function AdminScreen() {
     onLogout: async (e: MouseEvent) => {
       e.preventDefault();
       try {
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('fw_admin_auth');
-          localStorage.removeItem('fw_admin_user');
-          document.cookie = 'fw_admin_logged_in=; path=/; max-age=0';
-        }
         await getSupabaseBrowserClient().auth.signOut();
-      } catch {}
+      } catch {
+        /* signed out locally either way */
+      }
       router.push('/admin/login');
       router.refresh();
     },
@@ -759,16 +631,20 @@ export function AdminScreen() {
     },
   };
 
-  if (s.denied) {
+  if (s.denied || s.loadError) {
     return (
       <div className="pg-admin">
         <main style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: "'Geist', system-ui, sans-serif", background: '#F4F4F2' }}>
           <div className="card" style={{ maxWidth: 420, padding: 28, display: 'flex', flexDirection: 'column', gap: 10 }}>
             <span style={{ fontFamily: "'Geist Mono', monospace", fontSize: 12, color: '#5E5E5E' }}>ADMIN</span>
-            <h1 style={{ margin: 0, fontSize: 26, fontWeight: 600, letterSpacing: '-0.03em' }}>Admin Access Required</h1>
-            <p style={{ margin: 0, fontSize: 14, lineHeight: '22px', color: '#5E5E5E' }}>This page is reserved for authorized administrators only.</p>
+            <h1 style={{ margin: 0, fontSize: 26, fontWeight: 600, letterSpacing: '-0.03em' }}>{s.denied ? 'You need admin access' : 'Admin did not load'}</h1>
+            <p style={{ margin: 0, fontSize: 14, lineHeight: '22px', color: '#5E5E5E' }}>
+              {s.denied ? 'This account is not an owner or admin. Log in with an admin account, or ask an owner to invite you.' : s.loadError}
+            </p>
             <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-              <Link href="/admin/login" className="btn btn-dark">Log in as admin</Link>
+              {s.denied
+                ? <Link href="/admin/login" className="btn btn-dark">Log in as admin</Link>
+                : <button type="button" className="btn btn-dark" onClick={() => { set({ loadError: '', loading: true }); load(); }}>Try again</button>}
               <Link href="/" className="btn btn-line">Back to website</Link>
             </div>
           </div>

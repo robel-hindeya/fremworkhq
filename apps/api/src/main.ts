@@ -7,25 +7,37 @@ import { AppModule } from './app.module';
 
 let cachedServer: Express | null = null;
 
+/**
+ * WEB_URL is a comma-separated list of sites allowed to call the API, e.g.
+ * "https://fremwork.com,https://fremwork-web.vercel.app". Set ALLOW_VERCEL_PREVIEWS=true
+ * to also allow Vercel preview deployments (*.vercel.app).
+ */
+const allowedSites = () =>
+  (process.env.WEB_URL ?? 'http://localhost:3000')
+    .split(',')
+    .map((o) => o.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+
 export async function bootstrapServer(): Promise<Express> {
   if (cachedServer) {
     return cachedServer;
   }
   const expressApp = express();
+  expressApp.disable('x-powered-by');
+  expressApp.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    next();
+  });
   // Behind Vercel's proxy (one hop): use the client IP from X-Forwarded-For so the rate limit is per visitor,
   // not one shared bucket for everyone.
   if (process.env.VERCEL || process.env.TRUST_PROXY === 'true') expressApp.set('trust proxy', 1);
+  // JSON only. The largest body is an admin email: up to 100 KB of message and 1,000 addresses.
   expressApp.use(express.json({ limit: '1mb' }));
-  expressApp.use(express.urlencoded({ extended: true, limit: '1mb' }));
   const app = await NestFactory.create(AppModule, new ExpressAdapter(expressApp), { bodyParser: false });
 
-  // WEB_URL is a comma-separated list of sites allowed to call the API, e.g.
-  // "https://fremwork.com,https://fremwork-web.vercel.app". Set ALLOW_VERCEL_PREVIEWS=true
-  // to also allow Vercel preview deployments (*.vercel.app).
-  const allowed = (process.env.WEB_URL ?? 'http://localhost:3000')
-    .split(',')
-    .map((o) => o.trim().replace(/\/+$/, ''))
-    .filter(Boolean);
+  const allowed = allowedSites();
   // Off unless explicitly enabled: anyone can deploy a *.vercel.app site.
   const previews = process.env.ALLOW_VERCEL_PREVIEWS === 'true';
   app.enableCors({
@@ -49,11 +61,7 @@ if (typeof require !== 'undefined' && require.main === module) {
   bootstrapServer().then((server) => {
     const port = Number(process.env.PORT ?? 4000);
     server.listen(port, () => {
-      const allowed = (process.env.WEB_URL ?? 'http://localhost:3000')
-        .split(',')
-        .map((o) => o.trim().replace(/\/+$/, ''))
-        .filter(Boolean);
-      console.log(`Fremwork API on port ${port}. Allowed sites: ${allowed.join(', ')}`);
+      console.log(`Fremwork API on port ${port}. Allowed sites: ${allowedSites().join(', ')}`);
     });
   }, (err) => {
     console.error('Fremwork API failed to start:', err);

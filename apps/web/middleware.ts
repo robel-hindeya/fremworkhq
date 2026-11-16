@@ -1,14 +1,7 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import type { NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
 
-export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-  const loggedInCookie = request.cookies.get('fw_logged_in')?.value;
-
-  if (pathname === '/' && loggedInCookie === '1') {
-    return NextResponse.redirect(new URL('/home', request.url));
-  }
-
+export function middleware(request: NextRequest) {
   return updateSession(request);
 }
 
