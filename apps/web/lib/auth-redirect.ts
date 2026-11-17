@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 
 /** Pages a sign-in link may continue to. Anything else falls back to the workspace handoff. */
-const AFTER_SIGN_IN = ['/open-app', '/admin', '/set-password'];
+const AFTER_SIGN_IN = ['/open-app', '/home', '/admin', '/set-password'];
 
-export const safeNext = (value: string | null) => (value && AFTER_SIGN_IN.includes(value) ? value : '/open-app');
+export const safeNext = (value: string | null) => (value && AFTER_SIGN_IN.includes(value) ? value : '/home');
 
 /**
  * Redirect within this site using a relative Location. Behind a proxy (Render, Cloudflare)

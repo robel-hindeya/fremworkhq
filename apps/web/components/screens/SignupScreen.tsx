@@ -99,7 +99,7 @@ export function SignupScreen() {
 
   const onGoogle = async () => {
     setNotice('');
-    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: callbackUrl() } });
+    const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: callbackUrl('/home') } });
     if (error) setNotice(authMessage(error));
   };
 

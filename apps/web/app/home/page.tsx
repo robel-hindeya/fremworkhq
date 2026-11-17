@@ -15,13 +15,41 @@ export default function UserHomePage() {
 
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
-    supabase.auth.getUser().then(({ data }) => {
-      const u = data.user;
-      if (!u) return router.replace('/login');
+    let mounted = true;
+
+    const setFromUser = (u: any) => {
+      if (!mounted) return;
+      if (!u) {
+        // Also check localStorage fallback
+        try {
+          const local = localStorage.getItem('fw_user');
+          if (local) {
+            const parsed = JSON.parse(local);
+            if (parsed.email) {
+              setViewer({ name: parsed.name || parsed.email.split('@')[0], email: parsed.email });
+              return;
+            }
+          }
+        } catch {}
+        router.replace('/login');
+        return;
+      }
       const name = (u.user_metadata?.full_name as string | undefined)?.trim() || displayLogin(u.email).split('@')[0] || 'there';
-      // Username accounts have only a placeholder address: never prefill forms with it.
       setViewer({ name, email: isUsernameEmail(u.email) ? '' : u.email ?? '' });
-    }, () => router.replace('/login'));
+    };
+
+    supabase.auth.getUser().then(({ data }) => {
+      setFromUser(data?.user);
+    }, () => setFromUser(null));
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) setFromUser(session.user);
+    });
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
   }, [router]);
 
   const onLogout = async () => {

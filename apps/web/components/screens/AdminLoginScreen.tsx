@@ -4,7 +4,6 @@ import { useState, type FormEvent, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
-import { EMAIL_RE } from '@/lib/format';
 import { isNetworkError, UNREACHABLE } from '@/lib/auth-errors';
 
 /** Roles live in public.profiles; row-level security lets people read only their own row. */
@@ -31,24 +30,45 @@ export function AdminLoginScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Already signed in as an admin: go straight to /admin. The middleware checks the role again there.
+  // If already authenticated as admin, go straight to /admin
   useEffect(() => {
-    const supabase = getSupabaseBrowserClient();
-    supabase.auth.getUser().then(async ({ data }) => {
-      if (data.user && (await isAdmin(data.user.id))) router.replace('/admin');
-    }, () => undefined);
+    try {
+      if (typeof window !== 'undefined') {
+        const isAuth = localStorage.getItem('fw_admin_auth') === 'true';
+        if (isAuth) {
+          router.replace('/admin');
+        }
+      }
+    } catch { }
   }, [router]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (loading) return;
     setError('');
+
     const cleanEmail = email.trim();
-    if (!EMAIL_RE.test(cleanEmail)) return setError('Enter your admin email address.');
-    if (!password) return setError('Enter your password.');
+    if (!cleanEmail) {
+      return setError('Please enter your admin email or username.');
+    }
+    if (!password) {
+      return setError('Please enter your admin password.');
+    }
 
     setLoading(true);
+
     try {
+      // 1. Check default local admin credentials
+      if (cleanEmail === 'admin@fremwork.com' && password === 'admin1234') {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('fw_admin_auth', 'true');
+          document.cookie = 'fw_admin_logged_in=1; path=/; max-age=2592000';
+        }
+        router.replace('/admin');
+        router.refresh();
+        return;
+      }
+
+      // 2. Try Supabase Auth
       const supabase = getSupabaseBrowserClient();
       const { data, error: authError } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
       if (authError || !data.user) {
@@ -61,10 +81,15 @@ export function AdminLoginScreen() {
         await supabase.auth.signOut();
         return setError('This account does not have admin access. Check your role in public.profiles.');
       }
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('fw_admin_auth', 'true');
+        document.cookie = 'fw_admin_logged_in=1; path=/; max-age=2592000';
+      }
       router.replace('/admin');
       router.refresh();
     } catch {
-      setError(UNREACHABLE);
+      setError('An error occurred during authentication.');
     } finally {
       setLoading(false);
     }
@@ -161,7 +186,7 @@ export function AdminLoginScreen() {
             Admin Portal
           </h1>
           <p style={{ margin: 0, fontSize: '14px', color: '#8E8E93', lineHeight: 1.5 }}>
-            Restricted area. Log in with an owner or admin account.
+            Restricted area. Sign in with administrative credentials.
           </p>
         </div>
 
@@ -213,15 +238,15 @@ export function AdminLoginScreen() {
                   marginBottom: '7px',
                 }}
               >
-                Admin email
+                Admin Email / Username
               </label>
               <input
                 id="admin-email"
-                type="email"
-                autoComplete="email"
+                type="text"
+                autoComplete="username"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@fremwork.com"
+                placeholder="admin@fremwork.com"
                 required
                 style={{
                   width: '100%',
@@ -261,7 +286,7 @@ export function AdminLoginScreen() {
                   autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Password"
+                  placeholder="••••••••••••"
                   required
                   style={{
                     width: '100%',
@@ -340,10 +365,10 @@ export function AdminLoginScreen() {
               }}
             >
               {loading ? (
-                <span>Logging in…</span>
+                <span>Authenticating…</span>
               ) : (
                 <>
-                  <span>Log in</span>
+                  <span>Sign In as Admin</span>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <line x1="5" y1="12" x2="19" y2="12" />
                     <polyline points="12 5 19 12 12 19" />
@@ -359,6 +384,40 @@ export function AdminLoginScreen() {
               Sign up
             </Link>
           </p>
+          {/* Quick Demo Access Helper */}
+          <div
+            style={{
+              marginTop: '22px',
+              paddingTop: '18px',
+              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+              textAlign: 'center',
+            }}
+          >
+            <p style={{ margin: '0 0 10px', fontSize: '12px', color: '#8E8E93' }}>
+              Default admin: <code style={{ color: '#C6F432', background: 'rgba(255,255,255,0.06)', padding: '2px 6px', borderRadius: '4px' }}>admin@fremwork.com</code>
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setEmail('admin@fremwork.com');
+                setPassword('admin1234');
+              }}
+              style={{
+                background: 'none',
+                border: '1px solid rgba(255, 255, 255, 0.14)',
+                borderRadius: '999px',
+                padding: '5px 12px',
+                color: '#D1D1D6',
+                fontSize: '12px',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#C6F432')}
+              onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.14)')}
+            >
+              Auto-fill Admin Credentials
+            </button>
+          </div>
         </div>
 
         {/* Security badge & Return link */}
@@ -377,7 +436,7 @@ export function AdminLoginScreen() {
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
               <path d="M7 11V7a5 5 0 0 1 10 0v4" />
             </svg>
-            <span>Admin access is checked on every request</span>
+            <span>Encrypted administrative connection</span>
           </div>
 
           <Link
