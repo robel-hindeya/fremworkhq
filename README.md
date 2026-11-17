@@ -17,7 +17,7 @@ All twelve artboards are covered. The phone artboards are the same pages at 390p
 | --- | --- | --- |
 | `/` | Homepage | Demo chat with the six assistants (canned replies, see `components/screens/home-content.ts`) |
 | `/login` | Log in | Supabase password sign-in, SSO buttons, forgot password |
-| `/signup` | *(not in the design)* | Supabase sign-up with email confirmation, or Google. Uses the Log in card styles |
+| `/signup` | *(not in the design)* | Sign up with an email (confirmation link), a username (no email; needs `FREMWORK_SUPABASE_SECRET_KEY` on the website), or Google. Uses the Log in card styles |
 | `/home` | *(not in the design)* | Signed-in dashboard. The middleware sends signed-out visitors to `/login` |
 | `/waitlist` | Join the waitlist | Redirects to `/signup`, so links already shared keep working. The waitlist API (`POST /waitlist`) is still live |
 | `/events` | Events | Published events from the API, registration form, cancel, add-to-calendar (.ics) |

@@ -100,7 +100,7 @@ Secrets (Edge Functions → Secrets): `RESEND_API_KEY` (required), optional `EMA
   - `NEXT_PUBLIC_API_URL` (if the API is deployed)
 
   These are baked in at build time, so **redeploy after changing them**.
-- Never add the secret/service-role key to this project.
+- The secret key may be added only as `FREMWORK_SUPABASE_SECRET_KEY` (no `NEXT_PUBLIC_` prefix). It is read by one server route, `/api/auth/username-signup`, for sign-up without an email. Never give it a `NEXT_PUBLIC_` name.
 
 ### API (optional, second Vercel project)
 - Root Directory `apps/api`. Build is `vercel-build` (`nest build`). All routes rewrite to `api/index.js`, which now bundles the email template explicitly.

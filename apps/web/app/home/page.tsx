@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { UserDashboard } from '@/components/screens/UserDashboard';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
+import { displayLogin, isUsernameEmail } from '@/lib/username';
 
 interface Viewer { name: string; email: string }
 
@@ -17,8 +18,9 @@ export default function UserHomePage() {
     supabase.auth.getUser().then(({ data }) => {
       const u = data.user;
       if (!u) return router.replace('/login');
-      const name = (u.user_metadata?.full_name as string | undefined)?.trim() || u.email?.split('@')[0] || 'there';
-      setViewer({ name, email: u.email ?? '' });
+      const name = (u.user_metadata?.full_name as string | undefined)?.trim() || displayLogin(u.email).split('@')[0] || 'there';
+      // Username accounts have only a placeholder address: never prefill forms with it.
+      setViewer({ name, email: isUsernameEmail(u.email) ? '' : u.email ?? '' });
     }, () => router.replace('/login'));
   }, [router]);
 

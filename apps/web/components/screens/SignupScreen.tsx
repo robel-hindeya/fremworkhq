@@ -4,8 +4,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
-import { authMessage } from '@/lib/auth-errors';
+import { authMessage, UNREACHABLE } from '@/lib/auth-errors';
 import { EMAIL_RE } from '@/lib/format';
+import { isUsernameEmail, normalizeUsername, usernameEmail, usernameProblem } from '@/lib/username';
 import { identifyVisitor } from '@/components/VisitTracker';
 import {
   AuthCard, Asterisk, GoogleButton, MIN_PASSWORD, OrDivider, PasswordField, Spinner, TextField,
@@ -37,16 +38,20 @@ export function SignupScreen() {
     e.preventDefault();
     if (loading) return;
     const em = email.trim();
+    const isUsername = !em.includes('@');
     const next: Errors = {};
     if (!name.trim()) next.name = 'Enter your name.';
-    if (!EMAIL_RE.test(em)) next.email = 'Enter a valid email, like you@company.com.';
+    if (!em) next.email = 'Enter an email or pick a username.';
+    else if (isUsername) next.email = usernameProblem(em) || undefined;
+    else if (!EMAIL_RE.test(em) || isUsernameEmail(em)) next.email = 'Enter a valid email, like you@company.com.';
     if (password.length < MIN_PASSWORD) next.password = `Use at least ${MIN_PASSWORD} characters.`;
     else if (confirm !== password) next.confirm = 'The passwords do not match.';
     setErrors(next);
     setNotice('');
-    if (Object.keys(next).length) return;
+    if (Object.values(next).some(Boolean)) return;
 
     setLoading(true);
+    if (isUsername) return createWithUsername(normalizeUsername(em));
     const { data, error } = await supabase.auth.signUp({
       email: em,
       password,
@@ -63,6 +68,33 @@ export function SignupScreen() {
     // Email confirmation is on. The same message shows for an address that already has an account,
     // so the form does not reveal who has signed up.
     setSentTo(em);
+  };
+
+  /** No email: the server creates the account (already confirmed), then we sign in as usual. */
+  const createWithUsername = async (username: string) => {
+    try {
+      const res = await fetch('/api/auth/username-signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, name: name.trim() }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const message = (body as { message?: string }).message || 'We could not create the account. Try again.';
+        setLoading(false);
+        return res.status === 409 || res.status === 400 ? setErrors({ email: message }) : setNotice(message);
+      }
+      const { error } = await supabase.auth.signInWithPassword({ email: usernameEmail(username), password });
+      if (error) {
+        setLoading(false);
+        return setNotice(`Your account is ready. Log in with the username ${username}.`);
+      }
+      router.replace('/open-app');
+      router.refresh();
+    } catch {
+      setLoading(false);
+      setNotice(UNREACHABLE);
+    }
   };
 
   const onGoogle = async () => {
@@ -98,8 +130,13 @@ export function SignupScreen() {
       <form onSubmit={onSubmit} noValidate style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
         <TextField id="su-name" label="Your name" autoComplete="name" placeholder="Your name" value={name} error={errors.name}
           onChange={(e) => { setName(e.target.value); clear('name'); }} />
-        <TextField id="su-email" label="Work email" type="email" autoComplete="email" placeholder="you@company.com" value={email} error={errors.email}
-          onChange={(e) => { setEmail(e.target.value); clear('email'); }} />
+        <TextField id="su-email" label="Email or username" type="text" autoComplete="username" placeholder="you@company.com or a username" value={email}
+          error={errors.email} onChange={(e) => { setEmail(e.target.value); clear('email'); }} />
+        {!errors.email && email.trim() && !email.includes('@') ? (
+          <p style={{ margin: '-6px 0 0', fontSize: '12px', lineHeight: '18px', color: '#8C8C8C' }}>
+            No email needed. Without one, a forgotten password cannot be reset, so keep it safe.
+          </p>
+        ) : null}
         <TextField id="su-company" label="Company" hint="(optional)" autoComplete="organization" placeholder="Your company" value={company}
           onChange={(e) => setCompany(e.target.value)} />
         <PasswordField id="su-pass" label="Password" autoComplete="new-password" placeholder={`At least ${MIN_PASSWORD} characters`} value={password}

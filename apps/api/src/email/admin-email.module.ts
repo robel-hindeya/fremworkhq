@@ -15,6 +15,7 @@ export class AdminEmailDto {
 }
 
 export interface EmailContact { email: string; name: string; sources: string[] }
+const USERNAME_ACCOUNT_DOMAIN = '@users.fremwork.invalid';
 interface Campaign { id: string; content_hash: string; recipient_count: number; accepted_count: number; status: string; error_code: string | null }
 
 @Injectable()
@@ -39,7 +40,8 @@ export class AdminEmailService {
     const contacts = new Map<string, EmailContact>();
     groups.forEach((rows, i) => rows.forEach((row) => {
       const address = (row.email || '').trim().toLowerCase();
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) return;
+      // Username accounts (see apps/web/lib/username.ts) have a placeholder address that never receives mail.
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address) || address.endsWith(USERNAME_ACCOUNT_DOMAIN)) return;
       const source = ['Registered user', 'Waitlist', 'Event attendee'][i];
       const existing = contacts.get(address);
       if (existing) { if (!existing.sources.includes(source)) existing.sources.push(source); }

@@ -12,6 +12,15 @@ import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { EMAIL_RE } from '@/lib/format';
 import { authMessage, isNetworkError, UNREACHABLE } from '@/lib/auth-errors';
 import { callbackUrl } from '@/components/screens/auth-parts';
+import { usernameEmail, usernameProblem } from '@/lib/username';
+
+/** The address to sign in with: the email itself, or a username account's placeholder address. */
+function loginAddress(value: string): { address: string; error: string; isUsername: boolean } {
+  const v = value.trim();
+  if (v.includes('@')) return { address: v, isUsername: false, error: EMAIL_RE.test(v) ? '' : 'Enter a valid email, like you@company.com.' };
+  if (!v) return { address: '', isUsername: true, error: 'Enter your email or username.' };
+  return { address: usernameEmail(v), isUsername: true, error: usernameProblem(v) ? 'Enter a valid username or email.' : '' };
+}
 
 const nextParam = () => {
   const n = new URLSearchParams(window.location.search).get('next');
@@ -41,16 +50,16 @@ export function LoginScreen() {
     e?.preventDefault();
     const st = get();
     if (st.loading) return;
-    const em = st.email.trim();
-    if (!EMAIL_RE.test(em)) return set({ emailErr: 'Enter a valid email, like you@company.com.', passErr: '', notice: '' });
+    const login = loginAddress(st.email);
+    if (login.error) return set({ emailErr: login.error, passErr: '', notice: '' });
     if (!st.password) return set({ emailErr: '', passErr: 'Enter your password.', notice: '' });
 
     set({ loading: true, emailErr: '', passErr: '', notice: '' });
-    const { error } = await supabase.auth.signInWithPassword({ email: em, password: st.password });
+    const { error } = await supabase.auth.signInWithPassword({ email: login.address, password: st.password });
     if (error) {
       if (isNetworkError(error)) return set({ loading: false, notice: UNREACHABLE });
       if (/confirm/i.test(error.message)) return set({ loading: false, notice: 'Confirm your email first. Open the link we sent you, then log in.' });
-      return set({ loading: false, passErr: 'That email and password do not match.' });
+      return set({ loading: false, passErr: `That ${login.isUsername ? 'username' : 'email'} and password do not match.` });
     }
     set({ done: true, loading: false });
     router.replace(nextParam() ?? '/open-app');
@@ -60,6 +69,9 @@ export function LoginScreen() {
   const onForgot = async (e: MouseEvent) => {
     e.preventDefault();
     const em = get().email.trim();
+    if (em && !em.includes('@')) {
+      return set({ emailErr: '', notice: 'Accounts made with a username have no email, so the password cannot be reset by email. Ask an admin for help.' });
+    }
     if (!EMAIL_RE.test(em)) return set({ emailErr: 'Enter your email above, then choose Forgot.', notice: '' });
     const { error } = await supabase.auth.resetPasswordForEmail(em, { redirectTo: callbackUrl('/set-password') });
     if (error && isNetworkError(error)) return set({ notice: UNREACHABLE });
@@ -116,9 +128,9 @@ export function LoginScreen() {
       <p style={{ margin: "10px 0 0", fontSize: "14px", lineHeight: "22px", color: "#8C8C8C" }}>Log in to ask your numbers anything, from cash and margin to overdue invoices, in one place.</p>
       <form onSubmit={v.onSubmit} noValidate style={{ marginTop: "28px", display: "flex", flexDirection: "column", gap: "16px" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
-      <label htmlFor="login-email" style={{ fontSize: "13px", fontWeight: "500" }}>Email</label>
+      <label htmlFor="login-email" style={{ fontSize: "13px", fontWeight: "500" }}>Email or username</label>
       <div className="field" style={{ background: "#FFFFFF", border: `1px solid ${v.emailBorder}`, borderRadius: "6px" }}>
-      <input id="login-email" type="email" autoComplete="email" placeholder="you@company.com" value={v.email} onChange={v.onEmail} aria-invalid={v.emailInvalid} style={{ width: "100%", boxSizing: "border-box", border: "0", outline: "none", background: "transparent", fontFamily: "inherit", fontSize: "15px", color: "#0A0A0A", padding: "12px 14px" }} />
+      <input id="login-email" type="text" autoComplete="username" autoCapitalize="none" spellCheck={false} placeholder="you@company.com or username" value={v.email} onChange={v.onEmail} aria-invalid={v.emailInvalid} style={{ width: "100%", boxSizing: "border-box", border: "0", outline: "none", background: "transparent", fontFamily: "inherit", fontSize: "15px", color: "#0A0A0A", padding: "12px 14px" }} />
       </div>
       {v.emailErr ? (<><span style={{ fontSize: "12px", color: "#B42318" }}>{v.emailErr}</span></>) : null}
       </div>
