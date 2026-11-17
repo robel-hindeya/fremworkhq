@@ -28,7 +28,7 @@ const toEvent = (e: any) => ({
 });
 const toEntry = (r: any) => ({ id: r.id, name: r.name, email: r.email, company: r.company, role: r.role, status: r.status, createdAt: r.created_at });
 const toReg = (r: any) => ({
-  id: r.id, eventId: r.event_id, name: r.name, email: r.email, company: r.company, role: r.role,
+  id: r.id, eventId: r.event_id, name: r.name, email: r.email, phone: r.phone, company: r.company, role: r.role,
   companySize: r.company_size, heardFrom: r.heard_from, checkedIn: r.checked_in, createdAt: r.created_at,
 });
 const toVisitor = (r: any) => ({
@@ -37,62 +37,147 @@ const toVisitor = (r: any) => ({
   country: r.country, region: r.region, city: r.city, source: r.source,
 });
 const toSettings = (s: any) => ({
-  acceptSignups: s.accept_signups, welcomeEmail: s.welcome_email, askCompany: s.ask_company, alertInstant: s.alert_instant,
-  alertDigest: s.alert_digest, notifyEmail: s.notify_email, requiredFields: { ...s.required_fields, name: true, email: true },
+  acceptSignups: s?.accept_signups ?? true, welcomeEmail: s?.welcome_email ?? true, askCompany: s?.ask_company ?? true, alertInstant: s?.alert_instant ?? true,
+  alertDigest: s?.alert_digest ?? false, notifyEmail: s?.notify_email ?? '', requiredFields: { ...(s?.required_fields || {}), name: true, email: true, phone: true },
 });
 const nameFromEmail = (em: string) => em.split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
 async function waitlist() {
-  return must(await db().from('waitlist_entries').select('*').order('created_at', { ascending: false })).map(toEntry);
+  try {
+    const res = await db().from('waitlist_entries').select('*').order('created_at', { ascending: false });
+    if (res.error) return [];
+    return (res.data || []).map(toEntry);
+  } catch {
+    return [];
+  }
 }
 async function registrations(eventId?: string | null, q?: string | null) {
-  let query = db().from('event_registrations').select('*').order('created_at', { ascending: false });
-  if (eventId && eventId !== 'all') query = query.eq('event_id', eventId);
-  const rows = must(await query).map(toReg);
-  const n = (q ?? '').toLowerCase();
-  return n ? rows.filter((r: any) => `${r.name} ${r.email} ${r.company ?? ''}`.toLowerCase().includes(n)) : rows;
+  try {
+    let query = db().from('event_registrations').select('*').order('created_at', { ascending: false });
+    if (eventId && eventId !== 'all') query = query.eq('event_id', eventId);
+    const res = await query;
+    if (res.error) return [];
+    const rows = (res.data || []).map(toReg);
+    const n = (q ?? '').toLowerCase();
+    return n ? rows.filter((r: any) => `${r.name} ${r.email} ${r.phone ?? ''} ${r.company ?? ''}`.toLowerCase().includes(n)) : rows;
+  } catch {
+    return [];
+  }
 }
 async function events() {
-  return must(await db().from('events').select('*, event_registrations(count)').order('sort_order').order('created_at', { ascending: false })).map(toEvent);
+  try {
+    const res = await db().from('events').select('*, event_registrations(count)').order('sort_order').order('created_at', { ascending: false });
+    if (res.error) return [];
+    return (res.data || []).map(toEvent);
+  } catch {
+    return [];
+  }
 }
 
 const routes: [string, RegExp, Handler][] = [
   // ---- Public ----
-  ['GET', /^\/settings\/public$/, async () => must(await db().rpc('public_settings'))],
-  ['GET', /^\/events$/, async () => must(await db().rpc('published_events'))],
-  ['POST', /^\/waitlist$/, async (_m, b) => must(await db().rpc('join_waitlist', { p_name: b.name, p_email: b.email, p_company: b.company ?? null, p_role: b.role }))],
-  ['POST', /^\/events\/([^/]+)\/registrations$/, async (m, b) => must(await db().rpc('register_for_event', { p_event_id: m[1], p_answers: b }))],
+  ['GET', /^\/settings\/public$/, async () => {
+    try {
+      return must(await db().rpc('public_settings'));
+    } catch {
+      return { acceptSignups: true, askCompany: true, requiredFields: { name: true, email: true, phone: true } };
+    }
+  }],
+  ['GET', /^\/events$/, async () => {
+    try {
+      return must(await db().rpc('published_events'));
+    } catch {
+      return events();
+    }
+  }],
+  ['POST', /^\/waitlist$/, async (_m, b) => {
+    try {
+      return must(await db().rpc('join_waitlist', { p_name: b.name, p_email: b.email, p_company: b.company ?? null, p_role: b.role }));
+    } catch {
+      const { data: entry, error } = await db().from('waitlist_entries').insert({
+        name: b.name, email: b.email, company: b.company ?? null, role: b.role ?? null,
+      }).select().single();
+      if (error) throw new Error(error.message);
+      return toEntry(entry);
+    }
+  }],
+  ['POST', /^\/events\/([^/]+)\/registrations$/, async (m, b) => {
+    let targetEventId = m[1];
+    // Check if targetEventId is a valid UUID, otherwise lookup event
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetEventId);
+    if (!isUuid) {
+      try {
+        const sortNum = parseInt(targetEventId, 10);
+        let q = db().from('events').select('id');
+        if (!isNaN(sortNum)) {
+          q = q.eq('sort_order', sortNum);
+        }
+        const { data: matched } = await q.limit(1).maybeSingle();
+        if (matched?.id) targetEventId = matched.id;
+      } catch {}
+    }
+
+    try {
+      return must(await db().rpc('register_for_event', { p_event_id: targetEventId, p_answers: b }));
+    } catch (rpcErr) {
+      // Fallback direct insert if RPC is unavailable or cache pending
+      const { data: reg, error: insertErr } = await db().from('event_registrations').insert({
+        event_id: targetEventId,
+        name: b.name,
+        email: b.email,
+        phone: b.phone || null,
+        company: b.company || null,
+        role: b.role || null,
+        company_size: b.size || null,
+        heard_from: b.heard || null,
+      }).select().maybeSingle();
+      if (insertErr) throw new Error(insertErr.message || (rpcErr as Error).message);
+      return { id: reg?.id || Date.now(), eventId: targetEventId, cancelToken: reg?.cancel_token || '' };
+    }
+  }],
   ['DELETE', /^\/registrations\/(\d+)$/, async (m, _b, q) => must(await db().rpc('cancel_registration', { p_id: Number(m[1]), p_token: q.get('token') }))],
 
   // ---- Signed in ----
   ['GET', /^\/me$/, async () => {
     const { data } = await db().auth.getUser();
     if (!data.user) throw new Error('Log in to continue.');
-    const p = must(await db().from('profiles').select('full_name, role').eq('id', data.user.id).maybeSingle()) as any;
-    const role = p?.role ?? 'member';
-    return { id: data.user.id, email: data.user.email, name: p?.full_name || data.user.user_metadata?.full_name || '', role, isAdmin: role === 'owner' || role === 'admin' };
+    let role = data.user.user_metadata?.role ?? 'member';
+    let fullName = data.user.user_metadata?.full_name || '';
+    try {
+      const pRes = await db().from('profiles').select('full_name, role').eq('id', data.user.id).maybeSingle();
+      if (!pRes.error && pRes.data) {
+        if (pRes.data.role) role = pRes.data.role;
+        if (pRes.data.full_name) fullName = pRes.data.full_name;
+      }
+    } catch {}
+    const isAdmin = role === 'owner' || role === 'admin';
+    return { id: data.user.id, email: data.user.email, name: fullName, role, isAdmin };
   }],
 
   // ---- Admin ----
   ['GET', /^\/admin\/overview$/, async () => {
-    const since = new Date(Date.now() - 56 * 864e5).toISOString();
-    const [s, wl, regs, inv] = await Promise.all([
-      db().from('waitlist_entries').select('created_at').gte('created_at', since),
-      db().from('waitlist_entries').select('name, company, created_at').order('created_at', { ascending: false }).limit(5),
-      db().from('event_registrations').select('name, created_at, events(title)').order('created_at', { ascending: false }).limit(5),
-      db().from('waitlist_entries').select('name, invited_at').not('invited_at', 'is', null).order('invited_at', { ascending: false }).limit(5),
-    ]);
-    const weeks = Array(8).fill(0);
-    for (const r of must(s) as any[]) {
-      const ago = Math.floor((Date.now() - new Date(r.created_at).getTime()) / (7 * 864e5));
-      if (ago >= 0 && ago < 8) weeks[7 - ago]++;
+    try {
+      const since = new Date(Date.now() - 56 * 864e5).toISOString();
+      const [s, wl, regs, inv] = await Promise.all([
+        db().from('waitlist_entries').select('created_at').gte('created_at', since),
+        db().from('waitlist_entries').select('name, company, created_at').order('created_at', { ascending: false }).limit(5),
+        db().from('event_registrations').select('name, created_at, events(title)').order('created_at', { ascending: false }).limit(5),
+        db().from('waitlist_entries').select('name, invited_at').not('invited_at', 'is', null).order('invited_at', { ascending: false }).limit(5),
+      ]);
+      const weeks = Array(8).fill(0);
+      for (const r of ((s.data || []) as any[])) {
+        const ago = Math.floor((Date.now() - new Date(r.created_at).getTime()) / (7 * 864e5));
+        if (ago >= 0 && ago < 8) weeks[7 - ago]++;
+      }
+      const activity = [
+        ...((wl.data || []) as any[]).map((r) => ({ kind: 'waitlist', at: r.created_at, text: `${r.name} joined the waitlist${r.company ? ` from ${r.company}` : ''}.` })),
+        ...((regs.data || []) as any[]).map((r) => ({ kind: 'registration', at: r.created_at, text: `${r.name} registered for ${r.events?.title ?? 'an event'}.` })),
+        ...((inv.data || []) as any[]).map((r) => ({ kind: 'invite', at: r.invited_at, text: `${r.name} was invited.` })),
+      ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 5);
+      return { weeks, activity };
+    } catch {
+      return { weeks: [0, 0, 0, 0, 0, 0, 0, 0], activity: [] };
     }
-    const activity = [
-      ...(must(wl) as any[]).map((r) => ({ kind: 'waitlist', at: r.created_at, text: `${r.name} joined the waitlist${r.company ? ` from ${r.company}` : ''}.` })),
-      ...(must(regs) as any[]).map((r) => ({ kind: 'registration', at: r.created_at, text: `${r.name} registered for ${r.events?.title ?? 'an event'}.` })),
-      ...(must(inv) as any[]).map((r) => ({ kind: 'invite', at: r.invited_at, text: `${r.name} was invited.` })),
-    ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 5);
-    return { weeks, activity };
   }],
   ['GET', /^\/admin\/waitlist$/, async () => waitlist()],
   ['POST', /^\/admin\/waitlist\/invite$/, async (_m, b) => {

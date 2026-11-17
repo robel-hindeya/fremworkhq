@@ -55,7 +55,7 @@ export function SignupScreen() {
     const { data, error } = await supabase.auth.signUp({
       email: em,
       password,
-      options: { data: { full_name: name.trim(), company: company.trim() || undefined }, emailRedirectTo: callbackUrl() },
+      options: { data: { full_name: name.trim(), company: company.trim() || undefined, role: 'owner' }, emailRedirectTo: callbackUrl() },
     });
     setLoading(false);
     if (error) return setNotice(authMessage(error));

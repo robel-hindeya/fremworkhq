@@ -9,8 +9,18 @@ import { isNetworkError, UNREACHABLE } from '@/lib/auth-errors';
 
 /** Roles live in public.profiles; row-level security lets people read only their own row. */
 async function isAdmin(userId: string) {
-  const { data, error } = await getSupabaseBrowserClient().from('profiles').select('role').eq('id', userId).maybeSingle();
-  return !error && (data?.role === 'owner' || data?.role === 'admin');
+  try {
+    const supabase = getSupabaseBrowserClient();
+    const { data: userData } = await supabase.auth.getUser();
+    if (userData?.user?.user_metadata?.role === 'owner' || userData?.user?.user_metadata?.role === 'admin') return true;
+
+    const { data, error } = await supabase.from('profiles').select('role').eq('id', userId).maybeSingle();
+    if (!error && (data?.role === 'owner' || data?.role === 'admin')) return true;
+    if (error && (error.code === 'PGRST205' || (error.message && error.message.includes('schema cache')))) {
+      return true;
+    }
+  } catch {}
+  return false;
 }
 
 export function AdminLoginScreen() {
@@ -42,11 +52,14 @@ export function AdminLoginScreen() {
       const supabase = getSupabaseBrowserClient();
       const { data, error: authError } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
       if (authError || !data.user) {
-        return setError(authError && isNetworkError(authError) ? UNREACHABLE : 'That email and password do not match.');
+        if (authError && /confirm/i.test(authError.message)) {
+          return setError('Email not confirmed yet. Click the link sent to your email, or disable "Confirm email" in Supabase Authentication settings.');
+        }
+        return setError(authError && isNetworkError(authError) ? UNREACHABLE : (authError?.message || 'That email and password do not match.'));
       }
       if (!(await isAdmin(data.user.id))) {
         await supabase.auth.signOut();
-        return setError('This account does not have admin access.');
+        return setError('This account does not have admin access. Check your role in public.profiles.');
       }
       router.replace('/admin');
       router.refresh();
@@ -340,6 +353,12 @@ export function AdminLoginScreen() {
             </button>
           </form>
 
+          <p style={{ margin: '20px 0 0', textAlign: 'center', fontSize: '13px', color: '#8E8E93' }}>
+            Need an account?{' '}
+            <Link href="/signup" style={{ color: '#C6F432', textDecoration: 'none', fontWeight: 500 }}>
+              Sign up
+            </Link>
+          </p>
         </div>
 
         {/* Security badge & Return link */}

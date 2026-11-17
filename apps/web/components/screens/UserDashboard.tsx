@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { FramSvg, type FramFace } from '@/components/fram/FramSvg';
 import { useFram } from '@/components/fram/useFram';
 import { api, ApiError, type PublicEvent, type Registration } from '@/lib/api';
-import { formatWhen } from '@/lib/format';
+import { formatWhen, EMAIL_RE } from '@/lib/format';
 import { downloadIcs } from '@/lib/ics';
 import { loadRegs, saveRegs } from '@/lib/registrations';
 
@@ -312,7 +312,7 @@ export function UserDashboard({ userName, userEmail = '', onLogout, defaultTab =
     e.preventDefault();
     if (busy || !modalEvent) return;
     if (!formName.trim()) return setFormErr('Please enter your full name.');
-    if (!/^[^s@]+@[^s@]+.[^s@]+$/.test(formEmail.trim())) return setFormErr('Please enter a valid email address.');
+    if (!EMAIL_RE.test(formEmail.trim())) return setFormErr('Please enter a valid email address.');
     if (!formPhone.trim()) return setFormErr('Please enter your phone number.');
 
     const ev = modalEvent;

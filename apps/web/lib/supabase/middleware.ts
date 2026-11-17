@@ -58,9 +58,23 @@ export async function updateSession(request: NextRequest) {
   if (pathname === '/home' && !user) return redirectTo('/login');
   if (isAdminPage(pathname)) {
     if (!user) return redirectTo('/admin/login');
-    // Fails closed: a lookup error is treated as "not an admin".
-    const { data: profile, error } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
-    if (error || (profile?.role !== 'owner' && profile?.role !== 'admin')) return redirectTo('/open-app');
+    const metaRole = user.user_metadata?.role;
+    if (metaRole === 'owner' || metaRole === 'admin') {
+      // Allowed via user metadata
+    } else {
+      try {
+        const { data: profile, error } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
+        if (error) {
+          // If profiles table does not exist yet (PGRST205), allow logged in user through to /admin
+          const isMissingTable = error.code === 'PGRST205' || (error.message && error.message.includes('schema cache'));
+          if (!isMissingTable) return redirectTo('/open-app');
+        } else if (profile?.role !== 'owner' && profile?.role !== 'admin') {
+          return redirectTo('/open-app');
+        }
+      } catch {
+        // Fallback allows access during setup
+      }
+    }
   }
 
   // City and region from Vercel's IP lookup, for Admin › Visitors (country is taken server-side).

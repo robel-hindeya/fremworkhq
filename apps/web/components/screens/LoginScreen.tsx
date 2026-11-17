@@ -58,7 +58,7 @@ export function LoginScreen() {
     const { error } = await supabase.auth.signInWithPassword({ email: login.address, password: st.password });
     if (error) {
       if (isNetworkError(error)) return set({ loading: false, notice: UNREACHABLE });
-      if (/confirm/i.test(error.message)) return set({ loading: false, notice: 'Confirm your email first. Open the link we sent you, then log in.' });
+      if (/confirm/i.test(error.message)) return set({ loading: false, notice: 'Confirm your email first. Open the link we sent you, or disable "Confirm email" in your Supabase Authentication settings.' });
       return set({ loading: false, passErr: `That ${login.isUsername ? 'username' : 'email'} and password do not match.` });
     }
     set({ done: true, loading: false });
