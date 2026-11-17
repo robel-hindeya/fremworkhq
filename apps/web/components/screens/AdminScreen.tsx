@@ -1,6 +1,7 @@
 'use client';
 
 import { AdminEmailComposer } from '@/components/AdminEmailComposer';
+import { BrandLogo } from '@/components/BrandLogo';
 import Link from 'next/link';
 import '@/styles/admin.css';
 import { Fragment, useCallback, useEffect, useRef, type ChangeEvent, type MouseEvent } from 'react';
@@ -659,7 +660,7 @@ export function AdminScreen() {
       {/* Sidebar (desktop) */}
       <aside className="side" aria-label="Admin navigation">
       <Link href="/" style={{ display: "flex", alignItems: "center", gap: "10px", textDecoration: "none", color: "#0A0A0A", padding: "4px 8px 16px" }}>
-      <img src="/brand-logo.png" alt="Fremwork" width="24" height="24" style={{ display: "block", objectFit: "contain" }} />
+      <BrandLogo size={24} theme="light" />
       <span style={{ fontSize: "17px", fontWeight: "600", letterSpacing: "-0.02em" }}>Fremwork</span>
       <span style={{ marginLeft: "auto", fontFamily: "'Geist Mono', monospace", fontSize: "11px", color: "#5E5E5E", border: "1px solid #DCDCD8", borderRadius: "999px", padding: "2px 8px" }}>ADMIN</span>
       </Link>
@@ -692,7 +693,7 @@ export function AdminScreen() {
       <div className="mtop">
       <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "12px 16px 8px" }}>
       <Link href="/" style={{ display: "flex", alignItems: "center", gap: "9px", textDecoration: "none", color: "#0A0A0A" }}>
-      <img src="/brand-logo.png" alt="Fremwork" width="22" height="22" style={{ display: "block", objectFit: "contain" }} />
+      <BrandLogo size={22} theme="light" />
       <span style={{ fontSize: "16px", fontWeight: "600", letterSpacing: "-0.02em" }}>Fremwork</span></Link>
       <span style={{ fontFamily: "'Geist Mono', monospace", fontSize: "11px", color: "#5E5E5E", border: "1px solid #DCDCD8", borderRadius: "999px", padding: "2px 8px" }}>ADMIN</span>
       <span className="ava" style={{ marginLeft: "auto", width: "30px", height: "30px", background: "#0A0A0A", color: "#FFFFFF" }}>{v.meIni}</span>

@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { BrandLogo } from '@/components/BrandLogo';
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import { FramSvg, type FramFace, type FramMood } from '@/components/fram/FramSvg';
 import { useFram } from '@/components/fram/useFram';
@@ -34,7 +35,7 @@ const brandStyle: CSSProperties = {
 
 const Brand = ({ className, style }: { className?: string; style?: CSSProperties }) => (
   <Link href="/" className={className} style={{ ...brandStyle, ...style }}>
-    <img src="/brand-logo.png" alt="" width="22" height="22" style={{ display: 'block', objectFit: 'contain' }} />
+    <BrandLogo size={22} theme="light" />
     Fremwork
   </Link>
 );

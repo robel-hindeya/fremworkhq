@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { BrandLogo } from '@/components/BrandLogo';
 import { FramSvg, type FramFace } from '@/components/fram/FramSvg';
 import '@/styles/login.css';
 import { useEffect, type ChangeEvent, type FormEvent, type MouseEvent } from 'react';
@@ -145,7 +146,7 @@ export function LoginScreen() {
           <div className="lside" style={{ position: "relative", flex: "0 0 46%", borderRadius: "16px", overflow: "hidden", background: "#F1F1EC", display: "flex", flexDirection: "column", justifyContent: "space-between", padding: "28px 30px 34px", boxSizing: "border-box" }}>
             <div aria-hidden="true" className="glow" style={{ position: "absolute", left: "-20%", top: "18%", width: "130%", height: "80%", borderRadius: "50%", background: "radial-gradient(closest-side, rgba(198,244,50,0.85), rgba(198,244,50,0.35) 55%, rgba(198,244,50,0) 100%)", filter: "blur(30px)" }}></div>
             <div aria-hidden="true" style={{ position: "absolute", right: "-25%", top: "-20%", width: "80%", height: "60%", borderRadius: "50%", background: "radial-gradient(closest-side, rgba(255,255,255,0.9), rgba(255,255,255,0))", filter: "blur(20px)" }}></div>
-            <Link href="/" style={{ position: "relative", zIndex: "1", alignSelf: "flex-start", display: "flex", alignItems: "center", gap: "8px", fontWeight: "600", fontSize: "19px", letterSpacing: "-0.03em", textDecoration: "none", color: "#0A0A0A" }}><img src="/brand-logo.png" alt="Fremwork" width="22" height="22" style={{ display: "block", objectFit: "contain" }} />Fremwork</Link>
+            <Link href="/" style={{ position: "relative", zIndex: "1", alignSelf: "flex-start", display: "flex", alignItems: "center", gap: "8px", fontWeight: "600", fontSize: "19px", letterSpacing: "-0.03em", textDecoration: "none", color: "#0A0A0A" }}><BrandLogo size={22} theme="light" />Fremwork</Link>
             <div style={{ position: "relative", zIndex: "1", width: "62%", alignSelf: "center", margin: "24px 0" }}>
               <FramSvg f={v as FramFace} label="Fram, the Fremwork character, waving hello" className="fram-svg" svgRef={v.setFram} onMouseDown={v.onPoke} style={{ display: "block", width: "100%", height: "auto", overflow: "visible" }} />
             </div>
@@ -156,7 +157,7 @@ export function LoginScreen() {
           </div>
           {/* Right form panel */}
           <div className="auth-form" style={{ flex: "1 1 0", minWidth: "0", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "clamp(28px, 5vw, 64px) clamp(20px, 5vw, 72px)" }}>
-            <Link href="/" className="mob-brand" style={{ display: "none", alignSelf: "flex-start", alignItems: "center", gap: "8px", marginBottom: "28px", fontWeight: "600", fontSize: "19px", letterSpacing: "-0.03em", textDecoration: "none", color: "#0A0A0A" }}><img src="/brand-logo.png" alt="Fremwork" width="22" height="22" style={{ display: "block", objectFit: "contain" }} />Fremwork</Link>
+            <Link href="/" className="mob-brand" style={{ display: "none", alignSelf: "flex-start", alignItems: "center", gap: "8px", marginBottom: "28px", fontWeight: "600", fontSize: "19px", letterSpacing: "-0.03em", textDecoration: "none", color: "#0A0A0A" }}><BrandLogo size={22} theme="light" />Fremwork</Link>
             <div style={{ width: "100%", maxWidth: "360px" }}>
               <div className="fade" style={{ display: "flex", flexDirection: "column" }}>
                 <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><g stroke="#C6F432" strokeWidth="4.5" strokeLinecap="round"><path d="M15 3 V27"></path><path d="M4.6 9 L25.4 21"></path><path d="M4.6 21 L25.4 9"></path></g></svg>

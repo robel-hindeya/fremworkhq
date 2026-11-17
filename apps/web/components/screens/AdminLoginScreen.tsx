@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { isNetworkError, UNREACHABLE } from '@/lib/auth-errors';
+import { BrandLogo } from '@/components/BrandLogo';
 
 /** Roles live in public.profiles; row-level security lets people read only their own row. */
 async function isAdmin(userId: string) {
@@ -149,13 +150,7 @@ export function AdminLoginScreen() {
               marginBottom: '20px',
             }}
           >
-            <img
-              src="/brand-logo.png"
-              alt="Fremwork"
-              width="22"
-              height="22"
-              style={{ display: 'block', objectFit: 'contain' }}
-            />
+            <BrandLogo size={20} theme="dark" />
             <span style={{ fontSize: '14px', fontWeight: 600, letterSpacing: '-0.02em', color: '#FFFFFF' }}>
               Fremwork
             </span>

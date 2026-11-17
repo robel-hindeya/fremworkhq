@@ -2,9 +2,9 @@ import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { direct } from '@/lib/direct';
 
 const CONFIGURED_API = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/+$/, '');
-export const API_URL = CONFIGURED_API || 'http://localhost:4000';
-/** No API address in production: talk to Supabase directly. Locally, try the dev API first. */
-const API_DISABLED = !CONFIGURED_API && typeof window !== 'undefined' && window.location.hostname !== 'localhost';
+export const API_URL = CONFIGURED_API;
+/** No API address: talk to Supabase directly. */
+const API_DISABLED = !CONFIGURED_API;
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -51,7 +51,8 @@ async function viaApi<T>(path: string, { body, auth, fallback: _fallback, header
     });
   } catch {
     // Network error: the API is down, the URL is wrong, or CORS blocked the request.
-    console.error(`Fremwork API not reachable at ${API_URL}. Check NEXT_PUBLIC_API_URL and the API's WEB_URL.`);
+    // Use warn instead of error so Next.js dev overlay does not interrupt the user when falling back to Supabase.
+    console.warn(`Fremwork API not reachable at ${API_URL}; falling back to direct Supabase.`);
     throw new ApiError(0, 'We could not reach Fremwork right now. Try again in a minute.');
   }
   if (!res.ok) {

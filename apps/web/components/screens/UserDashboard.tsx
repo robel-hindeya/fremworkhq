@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { BrandLogo } from '@/components/BrandLogo';
 import { FramSvg, type FramFace } from '@/components/fram/FramSvg';
 import { useFram } from '@/components/fram/useFram';
 import { api, ApiError, type PublicEvent, type Registration } from '@/lib/api';
@@ -429,13 +430,7 @@ export function UserDashboard({ userName, userEmail = '', onLogout, defaultTab =
             }}
           >
             {/* Official Fremwork brand logo mark */}
-            <img
-              src="/brand-logo.png"
-              alt="Fremwork"
-              width="24"
-              height="24"
-              style={{ display: 'block', objectFit: 'contain' }}
-            />
+            <BrandLogo size={24} theme="light" />
             Fremwork
           </Link>
 
