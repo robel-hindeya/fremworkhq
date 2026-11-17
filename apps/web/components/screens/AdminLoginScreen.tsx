@@ -18,7 +18,7 @@ async function isAdmin(userId: string) {
     if (error && (error.code === 'PGRST205' || (error.message && error.message.includes('schema cache')))) {
       return true;
     }
-  } catch {}
+  } catch { }
   return false;
 }
 
